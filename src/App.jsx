@@ -235,28 +235,52 @@ function Stat({label,value,sub,tone,onClick}){return(<button className={"jc-stat
 // ───────────── betalingen ─────────────
 function Betalingen({data,update,edit}){
   const [sel,setSel]=useState(null);const months=data.months;
+  const [editCell,setEditCell]=useState(null);
   const [confirmLeeg,setConfirmLeeg]=useState(false);
-  const toggle=(mid,mo)=>{if(!edit)return;update(d=>{const k=`${mid}|${mo}`;const e=d.ledger[k]||{};const p=!e.paid;d.ledger[k]={...e,paid:p,date:p?e.date:null};});};
   const counts=months.map(mo=>data.members.filter(m=>isPaid(data,m.id,mo)).length);
   let legeCount=0;data.members.forEach(m=>months.forEach(mo=>{if(!hasEntry(data,m.id,mo))legeCount++;}));
   const vulLegeIn=()=>{update(d=>{d.members.forEach(m=>{months.forEach(mo=>{if(!hasEntry(d,m.id,mo)){const k=`${m.id}|${mo}`;d.ledger[k]={req:m.rate,paid:false};}});});});setConfirmLeeg(false);};
+  const addMaand=()=>update(d=>{const last=[...d.months].sort().pop();const next=addMonth(last,1);if(!d.months.includes(next))d.months.push(next);d.months.sort();});
   return (<div className="jc-card jc-nopad">
-    <div className="jc-cardhead pad"><h3>Betaaloverzicht</h3><span className="jc-hint">{edit?"tik een vakje om te wisselen · tik een naam voor details":"alleen-lezen"}</span></div>
-    {edit&&<div className="jc-importfoot" style={{borderTop:"none",borderBottom:"1px solid var(--line)"}}>
+    <div className="jc-cardhead pad"><h3>Betaaloverzicht</h3><span className="jc-hint">{edit?"tik een vakje om te bewerken · tik een naam voor overzicht":"alleen-lezen"}</span></div>
+    {edit&&<div className="jc-importfoot" style={{borderTop:"none",borderBottom:"1px solid var(--line)",gap:8,flexWrap:"wrap"}}>
       {confirmLeeg?<><span className="jc-needcat">{legeCount} lege vakje{legeCount!==1?"s":""} omzetten naar niet-betaald?</span><button className="jc-ghost" onClick={()=>setConfirmLeeg(false)}>annuleren</button><button className="jc-primary" onClick={vulLegeIn}>ja, omzetten</button></>
         :<button className="jc-addbtn ghost" onClick={()=>setConfirmLeeg(true)} disabled={legeCount===0}>Lege vakjes → niet betaald{legeCount>0?` (${legeCount})`:""}</button>}
+      <button className="jc-addbtn ghost" onClick={addMaand}>+ maand toevoegen</button>
     </div>}
     <div className="jc-gridscroll"><table className="jc-paytable">
       <thead><tr><th className="jc-sticky jc-nameh">Lid</th>{months.map(mo=><th key={mo}>{mLabel(mo)}</th>)}</tr></thead>
       <tbody>{data.members.map(m=>(<tr key={m.id}>
         <td className="jc-sticky jc-namecell" onClick={()=>edit&&setSel(m.id)} style={{cursor:edit?"pointer":"default"}}><span className="jc-av sm" style={{background:m.color}}>{m.short[0]}</span><span className="jc-nm">{m.short}</span><span className="jc-rate">{eur0(m.rate)}</span></td>
         {months.map(mo=>{const paid=isPaid(data,m.id,mo);const entry=hasEntry(data,m.id,mo);const req=cellReq(data,m.id,mo);const date=data.ledger[`${m.id}|${mo}`]?.date;
-          return(<td key={mo} className={"jc-cell "+(paid?"paid":entry?"open":"none")} onClick={()=>toggle(m.id,mo)} style={{cursor:edit?"pointer":"default"}}><span className="jc-mark">{paid?"✓":entry?"✕":"·"}</span><span className="jc-amt">{eur0(req)}</span>{paid&&date&&<span className="jc-date">{dmShort(date)}</span>}</td>);})}
+          return(<td key={mo} className={"jc-cell "+(paid?"paid":entry?"open":"none")} onClick={()=>edit&&setEditCell({mid:m.id,mo})} style={{cursor:edit?"pointer":"default"}}><span className="jc-mark">{paid?"✓":entry?"✕":"·"}</span><span className="jc-amt">{eur0(req)}</span>{paid&&date&&<span className="jc-date">{dmShort(date)}</span>}</td>);})}
       </tr>))}</tbody>
       <tfoot><tr><td className="jc-sticky jc-namecell foot">betaald</td>{counts.map((c,i)=><td key={i} className="jc-foot">{c}/{data.members.length}</td>)}</tr></tfoot>
     </table></div>
     {sel&&<MemberSheet data={data} update={update} mid={sel} edit={edit} onClose={()=>setSel(null)}/>}
+    {editCell&&<CellEditModal data={data} update={update} mid={editCell.mid} mo={editCell.mo} onClose={()=>setEditCell(null)}/>}
   </div>);
+}
+function CellEditModal({data,update,mid,mo,onClose}){
+  const m=data.members.find(x=>x.id===mid);
+  const e=data.ledger[`${mid}|${mo}`]||{};
+  const [req,setReq]=useState(e.req==null?"":String(e.req));
+  const [paid,setPaid]=useState(!!e.paid);
+  const [date,setDate]=useState(e.date||"");
+  const save=()=>{update(d=>{const n=req===""?null:Number(req);d.ledger[`${mid}|${mo}`]={req:isNaN(n)?null:n,paid,date:paid?(date||null):null};});onClose();};
+  return (<div className="jc-overlay" onClick={onClose}><div className="jc-pin" onClick={ev=>ev.stopPropagation()}>
+    <div className="jc-pintitle">{m.short} · {mLabel(mo,true)}</div>
+    <p className="jc-pinsub">Bedrag, betaald-status en datum aanpassen.</p>
+    <input className="jc-pinin" style={{fontSize:16,letterSpacing:0,marginBottom:8,textAlign:"left"}} type="number" placeholder="gevraagd bedrag" value={req} onChange={ev=>setReq(ev.target.value)}/>
+    <div className="jc-pinrow" style={{marginBottom:8}}>
+      <button type="button" className={"jc-toggle "+(paid?"on":"")} onClick={()=>setPaid(p=>!p)} style={{flex:1}}>{paid?"✓ betaald":"✕ niet betaald"}</button>
+    </div>
+    {paid&&<input className="jc-pinin" style={{fontSize:14,letterSpacing:0,textAlign:"left"}} type="date" value={date} onChange={ev=>setDate(ev.target.value)}/>}
+    <div className="jc-pinrow">
+      <button className="jc-ghost" onClick={onClose}>annuleren</button>
+      <button className="jc-primary" onClick={save}>opslaan</button>
+    </div>
+  </div></div>);
 }
 function MemberSheet({data,update,mid,edit,onClose}){
   const m=data.members.find(x=>x.id===mid);const months=data.months;
