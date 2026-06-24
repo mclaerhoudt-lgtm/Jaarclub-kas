@@ -61,10 +61,12 @@ create table if not exists club (
   iban text not null default '',
   beheerders text not null default '',
   lustrum_target numeric not null default 3000,
+  pm_pin text not null default '1865',
   last_updated date,
   last_updated_by text
 );
 insert into club (id) values (1) on conflict (id) do nothing;
+alter table club add column if not exists pm_pin text not null default '1865';
 
 -- ───────────── leden ─────────────
 create table if not exists members (
@@ -178,9 +180,10 @@ create table if not exists forecast_boeking_betalingen (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────
--- Row Level Security: LEZEN is voor iedereen open (geen account nodig, net als
--- vroeger met de gedeelde link) — alleen SCHRIJVEN (insert/update/delete) is
--- voorbehouden aan wie is ingelogd mét de rol penningmeester.
+-- Row Level Security: zowel LEZEN als SCHRIJVEN staat open voor iedereen met
+-- de (publieke) anon key — er zijn geen accounts. De penningmeester-status
+-- wordt alleen in de app zelf afgedwongen via een 4-cijferige pincode
+-- (data.pmPin / club.pm_pin), net zoals in de oorspronkelijke lokale versie.
 -- ─────────────────────────────────────────────────────────────────────────
 
 do $$
@@ -196,14 +199,11 @@ begin
     execute format('alter table %I enable row level security;', t);
 
     execute format('drop policy if exists "read_authenticated" on %I;', t); -- oude naam, opruimen
+    execute format('drop policy if exists "write_pm" on %I;', t); -- oude naam, opruimen
     execute format('drop policy if exists "read_public" on %I;', t);
+    execute format('drop policy if exists "all_public" on %I;', t);
     execute format(
-      'create policy "read_public" on %I for select using (true);', t
-    );
-
-    execute format('drop policy if exists "write_pm" on %I;', t);
-    execute format(
-      'create policy "write_pm" on %I for all using (is_penningmeester()) with check (is_penningmeester());', t
+      'create policy "all_public" on %I for all using (true) with check (true);', t
     );
   end loop;
 end $$;

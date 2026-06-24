@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase } from "./supabase.js";
 
 // Leest alle Supabase-tabellen en bouwt daar precies dezelfde geneste `data`-vorm
 // van die de rest van de app (App.jsx) al verwacht — zodat de UI-componenten
@@ -39,6 +39,7 @@ export async function loadAll() {
     iban: club.data.iban,
     beheerders: club.data.beheerders,
     lustrumTarget: club.data.lustrum_target,
+    pmPin: club.data.pm_pin,
     lastUpdated: club.data.last_updated,
     lastUpdatedBy: club.data.last_updated_by,
     members: members.data.map((m) => ({
@@ -99,10 +100,15 @@ async function syncCollection(table, idCol, rows) {
 
 export async function saveAll(data) {
   const f = data.forecast;
-  const results = await Promise.all([
+  const check = (r) => { if (r && r.error) throw r.error; };
+
+  // members/months/categories moeten klaar zijn vóórdat tabellen die naar hen
+  // verwijzen (ledger, expenses, forecast_buckets, forecast_one_offs) geschreven
+  // worden — anders schiet een foreign-key-check raceconditie ertussen.
+  const step1 = await Promise.all([
     supabase.from("club").update({
       group_name: data.groupName, iban: data.iban, beheerders: data.beheerders,
-      lustrum_target: data.lustrumTarget, last_updated: data.lastUpdated, last_updated_by: data.lastUpdatedBy,
+      lustrum_target: data.lustrumTarget, pm_pin: data.pmPin, last_updated: data.lastUpdated, last_updated_by: data.lastUpdatedBy,
     }).eq("id", 1),
     supabase.from("accounts").update({
       betaalrekening: data.accounts.betaalrekening,
@@ -125,22 +131,24 @@ export async function saveAll(data) {
       id: m.id, name: m.name, short: m.short, type: m.type, rate: m.rate, color: m.color, saved: m.saved, target: m.target,
     }))),
     syncCollection("months", "month", data.months.map((mo) => ({ month: mo }))),
+    syncCollection("categories", "name", data.categories.map((c) => ({ name: c.name, color: c.color }))),
+    syncCollection("forecast_boeking_betalingen", "id", f.vakantie.boeking.betalingen.map((b) => ({ id: b.id, maand: b.maand, bedrag: b.bedrag, label: b.label }))),
+    syncCollection("income", "month", Object.entries(data.income).map(([month, amount]) => ({ month, amount }))),
+  ]);
+  step1.forEach(check);
+
+  const step2 = await Promise.all([
     syncCollection("ledger", "member_id", Object.entries(data.ledger).map(([k, v]) => {
       const [member_id, month] = k.split("|");
       return { member_id, month, req: v.req, paid: v.paid, date: v.date };
     })),
-    syncCollection("categories", "name", data.categories.map((c) => ({ name: c.name, color: c.color }))),
     syncCollection("expenses", "id", data.expenses.map((e) => ({ id: e.id, month: e.month, description: e.desc, amount: e.amount, cat: e.cat }))),
-    syncCollection("income", "month", Object.entries(data.income).map(([month, amount]) => ({ month, amount }))),
     syncCollection("forecast_buckets", "id", f.buckets.map((b) => ({
       id: b.id, name: b.name, cat: b.cat, start_maand: b.startMaand, eind_maand: b.eindMaand,
       totaal_bedrag: b.totaalBedrag, enabled: b.enabled,
       is_boeking_pot: !!b.isBoekingPot, is_activiteiten_pot: !!b.isActiviteitenPot, is_buffer: !!b.isBuffer,
     }))),
     syncCollection("forecast_one_offs", "id", f.oneOffs.map((o) => ({ id: o.id, month: o.month, description: o.desc, amount: o.amount, cat: o.cat }))),
-    syncCollection("forecast_boeking_betalingen", "id", f.vakantie.boeking.betalingen.map((b) => ({ id: b.id, maand: b.maand, bedrag: b.bedrag, label: b.label }))),
   ]);
-  for (const r of results) {
-    if (r && r.error) throw r.error;
-  }
+  step2.forEach(check);
 }
