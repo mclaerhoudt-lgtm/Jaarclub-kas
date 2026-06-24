@@ -136,9 +136,16 @@ export default function App(){
   const [data,setData]=useState(null);
   const [loadError,setLoadError]=useState(null);
   const [tab,setTab]=useState("overzicht");
+  const [loginOpen,setLoginOpen]=useState(false);
   const loaded=useRef(false);
   const [saving,setSaving]=useState(false);
   const edit=profile?.role==="penningmeester";
+
+  // Lezen is publiek (geen account nodig) — alleen schrijven vereist een login met de rol penningmeester.
+  useEffect(()=>{(async()=>{
+    try{ const n=await loadAll(); setData(n); loaded.current=true; }
+    catch(e){ setLoadError(e.message||String(e)); }
+  })();},[]);
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>setSession(session));
@@ -147,16 +154,10 @@ export default function App(){
   },[]);
 
   useEffect(()=>{
-    if(!session){ setProfile(null); setData(null); loaded.current=false; return; }
+    if(!session){ setProfile(null); return; }
     (async()=>{
-      try{
-        const {data:p,error}=await supabase.from("profiles").select("*").eq("id",session.user.id).single();
-        if(error) throw error;
-        setProfile(p);
-        const n=await loadAll();
-        setData(n);
-        loaded.current=true;
-      }catch(e){ setLoadError(e.message||String(e)); }
+      const {data:p,error}=await supabase.from("profiles").select("*").eq("id",session.user.id).single();
+      if(!error) setProfile(p);
     })();
   },[session]);
 
@@ -167,17 +168,15 @@ export default function App(){
 
   const update=(fn)=>{ if(!edit)return; setData(prev=>{const n=structuredClone(prev);fn(n);n.lastUpdated=TODAY;return n;}); };
 
-  if(session===undefined) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#6b5436"}}>Laden…</div>;
-  if(!session) return <LoginScreen/>;
   if(loadError) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#b5532a"}}>Kon de kas niet laden: {loadError}</div>;
-  if(!data||!profile) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#6b5436"}}>Kas laden…</div>;
+  if(!data) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#6b5436"}}>Kas laden…</div>;
 
   const TABS=[["overzicht","Overzicht"],["betalingen","Betalingen"],["achterstand","Achterstanden"],["uitgaves","Uitgaves"],["lustrum","Lustrum"],["prognose","Prognose"]];
   if(edit) TABS.push(["beheer","Beheer"]);
 
   return (
     <div className="jc-root">
-      <Header data={data} saving={saving} edit={edit} email={session.user.email} onLogout={()=>supabase.auth.signOut()}/>
+      <Header data={data} saving={saving} edit={edit} loggedIn={!!session} onLoginClick={()=>setLoginOpen(true)} onLogout={()=>supabase.auth.signOut()}/>
       <div className="jc-bogolan"/>
       <nav className="jc-tabs">{TABS.map(([k,l])=><button key={k} className={"jc-tab"+(tab===k?" on":"")} onClick={()=>setTab(k)}>{l}</button>)}</nav>
       <main className="jc-main"><EB key={tab}>
@@ -190,11 +189,12 @@ export default function App(){
         {tab==="beheer" && edit && <Beheer data={data} update={update} setData={setData}/>}
       </EB></main>
       <footer className="jc-foot">Gedeelde kas · iedereen met deze app ziet dezelfde gegevens · {data.iban}</footer>
+      {loginOpen && <LoginModal onClose={()=>setLoginOpen(false)}/>}
     </div>
   );
 }
 
-function LoginScreen(){
+function LoginModal({onClose}){
   const [mode,setMode]=useState("login");
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
@@ -208,6 +208,7 @@ function LoginScreen(){
       if(mode==="login"){
         const {error}=await supabase.auth.signInWithPassword({email,password});
         if(error)throw error;
+        onClose();
       }else{
         const {error}=await supabase.auth.signUp({email,password,options:{data:{display_name:name}}});
         if(error)throw error;
@@ -216,25 +217,27 @@ function LoginScreen(){
     }catch(e){ setErr(e.message||String(e)); }
     setBusy(false);
   };
-  return (<div className="jc-root" style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-    <form className="jc-pin" onSubmit={submit}>
-      <div className="jc-pintitle"><span className="jc-diamond" style={{display:"inline-block",marginRight:8,verticalAlign:"middle"}}/>Jaarclub kas</div>
-      <p className="jc-pinsub">{mode==="login"?"Log in met je e-mail en wachtwoord.":"Maak een account aan om mee te kunnen kijken."}</p>
+  return (<div className="jc-overlay" onClick={onClose}><form className="jc-pin" onClick={e=>e.stopPropagation()} onSubmit={submit}>
+      <div className="jc-pintitle">Penningmeester-login</div>
+      <p className="jc-pinsub">{mode==="login"?"Log in om de kas te kunnen bewerken.":"Maak een account aan (vraag de huidige penningmeester om je daarna de rol te geven)."}</p>
       {mode==="signup"&&<input className="jc-pinin" style={{fontSize:14,letterSpacing:0,marginBottom:8,textAlign:"left"}} placeholder="Naam" value={name} onChange={e=>setName(e.target.value)}/>}
       <input className="jc-pinin" style={{fontSize:14,letterSpacing:0,marginBottom:8,textAlign:"left"}} type="email" placeholder="E-mail" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)}/>
       <input className="jc-pinin" style={{fontSize:14,letterSpacing:0,textAlign:"left"}} type="password" placeholder="Wachtwoord" autoComplete={mode==="login"?"current-password":"new-password"} required minLength={6} value={password} onChange={e=>setPassword(e.target.value)}/>
       {err && <span className="jc-pinerr">{err}</span>}
       {info && <span className="jc-pinerr" style={{color:"var(--sahel)"}}>{info}</span>}
       <div className="jc-pinrow">
-        <button type="button" className="jc-ghost" onClick={()=>{setMode(mode==="login"?"signup":"login");setErr(null);setInfo(null);}}>{mode==="login"?"nieuw account":"al een account"}</button>
+        <button type="button" className="jc-ghost" onClick={onClose}>annuleren</button>
         <button type="submit" className="jc-primary" disabled={busy}>{mode==="login"?"inloggen":"aanmaken"}</button>
       </div>
+      <p className="jc-pinsub" style={{marginTop:10,marginBottom:0}}>
+        <button type="button" className="jc-mini" onClick={()=>{setMode(mode==="login"?"signup":"login");setErr(null);setInfo(null);}}>{mode==="login"?"nog geen account? maak er een":"al een account? inloggen"}</button>
+      </p>
     </form>
   </div>);
 }
 
 // ───────────── header ─────────────
-function Header({data,saving,edit,email,onLogout}){
+function Header({data,saving,edit,loggedIn,onLoginClick,onLogout}){
   const saldo=data.accounts.betaalrekening;
   return (<header className="jc-header">
     <div className="jc-headtop"><div className="jc-brand"><span className="jc-diamond"/><div>
@@ -242,8 +245,11 @@ function Header({data,saving,edit,email,onLogout}){
       <div className="jc-gsub">Laatst bijgewerkt {dmy(data.lastUpdated)}{data.lastUpdatedBy?` · ${data.lastUpdatedBy}`:""}</div>
     </div></div><div className="jc-headright">
       <span className={"jc-save"+(saving?" busy":"")}>{saving?"opslaan…":"opgeslagen"}</span>
-      <span className={"jc-rolebtn"+(edit?" pm":"")} title={email}>{edit?"● Penningmeester":"Kijkmodus"}</span>
-      <button className="jc-rolebtn" onClick={onLogout}>Uitloggen</button>
+      {edit
+        ? <><span className="jc-rolebtn pm">● Penningmeester</span><button className="jc-rolebtn" onClick={onLogout}>Uitloggen</button></>
+        : loggedIn
+          ? <><span className="jc-rolebtn">Kijkmodus (ingelogd)</span><button className="jc-rolebtn" onClick={onLogout}>Uitloggen</button></>
+          : <button className="jc-rolebtn" onClick={onLoginClick}>Inloggen als penningmeester</button>}
     </div></div>
     <div className="jc-balance"><div className="jc-balmain"><span className="jc-ballabel">Saldo betaalrekening</span><span className="jc-balnum">{eur0(saldo)}</span></div>
       <div className="jc-balside"><div><span className="ochre">{eur0(data.accounts.lustrum)}</span><label>lustrum spaarpot</label></div>

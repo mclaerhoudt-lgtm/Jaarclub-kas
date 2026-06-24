@@ -178,8 +178,9 @@ create table if not exists forecast_boeking_betalingen (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────
--- Row Level Security: iedereen ingelogd mag LEZEN, alleen penningmeester
--- mag SCHRIJVEN (insert/update/delete). Niet-ingelogde bezoekers mogen niets.
+-- Row Level Security: LEZEN is voor iedereen open (geen account nodig, net als
+-- vroeger met de gedeelde link) — alleen SCHRIJVEN (insert/update/delete) is
+-- voorbehouden aan wie is ingelogd mét de rol penningmeester.
 -- ─────────────────────────────────────────────────────────────────────────
 
 do $$
@@ -194,9 +195,10 @@ begin
   loop
     execute format('alter table %I enable row level security;', t);
 
-    execute format('drop policy if exists "read_authenticated" on %I;', t);
+    execute format('drop policy if exists "read_authenticated" on %I;', t); -- oude naam, opruimen
+    execute format('drop policy if exists "read_public" on %I;', t);
     execute format(
-      'create policy "read_authenticated" on %I for select using (auth.uid() is not null);', t
+      'create policy "read_public" on %I for select using (true);', t
     );
 
     execute format('drop policy if exists "write_pm" on %I;', t);
