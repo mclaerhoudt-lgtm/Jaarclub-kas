@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, Component } from "react";
 import { loadAll, saveAll } from "./lib/db";
+import { supabase } from "./lib/supabase";
 
 // Startdata uit jullie eigen spreadsheet (apr 2026)
 const SEED = {"groupName":"Jaarclub kas","iban":"NL45RABO0386282927","beheerders":"Thomas Wit & Jasper Rutten","members":[{"id":"m0","name":"Julian (Cosmo) Adang","short":"Cosmo","type":"fulltime","rate":270,"color":"#b5532a","saved":200.0,"target":3000},{"id":"m1","name":"Cas Marseille","short":"Cas","type":"fulltime","rate":270,"color":"#c8841a","saved":150.0,"target":3000},{"id":"m2","name":"Casper van Aarem","short":"Casper","type":"fulltime","rate":270,"color":"#2c3e63","saved":50.0,"target":3000},{"id":"m3","name":"Clovis Kien","short":"Clovis","type":"fulltime","rate":270,"color":"#5f7d34","saved":0.0,"target":3000},{"id":"m4","name":"Floris ter Linden","short":"Floris","type":"parttime","rate":220,"color":"#9c6b3f","saved":100.0,"target":3000},{"id":"m5","name":"Jasper Rutten","short":"Jasper","type":"parttime+sparen","rate":210,"color":"#7a4a2e","saved":350.0,"target":3000},{"id":"m6","name":"Julian van Dealen","short":"Julian vD","type":"fulltime","rate":270,"color":"#a8852c","saved":50.0,"target":3000},{"id":"m7","name":"Mats van Geest","short":"Mats","type":"fulltime","rate":270,"color":"#3a5a7a","saved":0.0,"target":3000},{"id":"m8","name":"Max Claerhoudt","short":"Max","type":"fulltime+sparen","rate":320,"color":"#6e7d3a","saved":300.0,"target":3000},{"id":"m9","name":"Olaf van den Boom","short":"Olaf","type":"fulltime","rate":270,"color":"#8a5a3a","saved":50.0,"target":3000},{"id":"m10","name":"Pepijn de Groen","short":"Pepijn","type":"fulltime","rate":270,"color":"#bf7a35","saved":0.0,"target":3000},{"id":"m11","name":"Sam van Luipen","short":"Sam","type":"fulltime","rate":270,"color":"#445f86","saved":50.0,"target":3000},{"id":"m12","name":"Siebrand van Dellen","short":"Siebrand","type":"fulltime","rate":270,"color":"#7d6332","saved":0.0,"target":3000},{"id":"m13","name":"Thomas Wit","short":"Thomas","type":"fulltime","rate":270,"color":"#5a7340","saved":50.0,"target":3000},{"id":"m14","name":"Tijl Zwart","short":"Tijl Z","type":"fulltime","rate":270,"color":"#a05a35","saved":0.0,"target":3000},{"id":"m15","name":"Tom Schapers","short":"Tom","type":"fulltime","rate":270,"color":"#4a6378","saved":0.0,"target":3000}],"months":["2025-11","2025-12","2026-01","2026-02","2026-03","2026-04","2026-05","2026-06"],"ledger":{"m0|2025-11":{"req":270.0,"paid":true,"date":"2025-11-24"},"m0|2025-12":{"req":270.0,"paid":true,"date":"2025-12-22"},"m0|2026-01":{"req":270.0,"paid":true,"date":"2026-01-25"},"m0|2026-02":{"req":220.0,"paid":true,"date":"2026-02-24"},"m0|2026-03":{"req":270.0,"paid":true,"date":"2026-03-24"},"m0|2026-04":{"req":270.0,"paid":true,"date":"2026-04-24"},"m0|2026-05":{"req":220.0,"paid":true,"date":"2026-05-26"},"m0|2026-06":{"req":null,"paid":false},"m1|2025-11":{"req":115.0,"paid":true,"date":"2025-12-01"},"m1|2025-12":{"req":115.0,"paid":true,"date":"2025-12-29"},"m1|2026-01":{"req":115.0,"paid":true,"date":"2026-02-24"},"m1|2026-02":{"req":270.0,"paid":true,"date":"2026-02-24"},"m1|2026-03":{"req":270.0,"paid":true,"date":"2026-04-26"},"m1|2026-04":{"req":270.0,"paid":true,"date":"2026-05-23"},"m1|2026-05":{"req":270.0,"paid":false},"m1|2026-06":{"req":null,"paid":false},"m2|2025-11":{"req":100.0,"paid":true,"date":"2025-11-24"},"m2|2025-12":{"req":270.0,"paid":true,"date":"2025-01-06"},"m2|2026-01":{"req":270.0,"paid":true,"date":"2026-02-24"},"m2|2026-02":{"req":270.0,"paid":true,"date":"2026-03-25"},"m2|2026-03":{"req":270.0,"paid":true,"date":"2026-04-24"},"m2|2026-04":{"req":270.0,"paid":true,"date":"2026-05-05"},"m2|2026-05":{"req":270.0,"paid":true,"date":"2026-06-03"},"m2|2026-06":{"req":null,"paid":false},"m3|2025-11":{"req":270.0,"paid":true,"date":"2025-12-02"},"m3|2025-12":{"req":270.0,"paid":true},"m3|2026-01":{"req":540.0,"paid":true},"m3|2026-02":{"req":270.0,"paid":true,"date":"2026-03-03"},"m3|2026-03":{"req":270.0,"paid":false},"m3|2026-04":{"req":540.0,"paid":true,"date":"2026-05-05"},"m3|2026-05":{"req":270.0,"paid":false},"m3|2026-06":{"req":null,"paid":false},"m4|2025-11":{"req":345.0,"paid":true,"date":"2025-12-08"},"m4|2025-12":{"req":115.0,"paid":true,"date":"2026-01-14"},"m4|2026-01":{"req":270.0,"paid":true,"date":"2026-02-27"},"m4|2026-02":{"req":220.0,"paid":false},"m4|2026-03":{"req":440.0,"paid":false},"m4|2026-04":{"req":660.0,"paid":true,"date":"2026-04-23"},"m4|2026-05":{"req":220.0,"paid":false},"m4|2026-06":{"req":null,"paid":false},"m5|2025-11":{"req":178.0,"paid":true,"date":"2025-11-24"},"m5|2025-12":{"req":null,"paid":true,"date":"2025-11-24"},"m5|2026-01":{"req":210.0,"paid":true,"date":"2026-01-26"},"m5|2026-02":{"req":210.0,"paid":true,"date":"2026-02-25"},"m5|2026-03":{"req":210.0,"paid":true,"date":"2026-03-25"},"m5|2026-04":{"req":210.0,"paid":true,"date":"2026-04-27"},"m5|2026-05":{"req":210.0,"paid":true,"date":"2026-05-25"},"m5|2026-06":{"req":null,"paid":false},"m6|2025-11":{"req":320.0,"paid":true,"date":"2025-11-24"},"m6|2025-12":{"req":270.0,"paid":false},"m6|2026-01":{"req":540.0,"paid":true,"date":"2026-02-18"},"m6|2026-02":{"req":270.0,"paid":true,"date":"2026-04-30"},"m6|2026-03":{"req":270.0,"paid":true,"date":"2026-05-04"},"m6|2026-04":{"req":270.0,"paid":true,"date":"2026-05-05"},"m6|2026-05":{"req":270.0,"paid":true,"date":"2026-06-08"},"m6|2026-06":{"req":null,"paid":false},"m7|2025-11":{"req":270.0,"paid":true,"date":"2025-11-24"},"m7|2025-12":{"req":270.0,"paid":true,"date":"2026-01-06"},"m7|2026-01":{"req":270.0,"paid":true,"date":"2026-01-26"},"m7|2026-02":{"req":270.0,"paid":true,"date":"2026-02-25"},"m7|2026-03":{"req":270.0,"paid":true,"date":"2026-03-25"},"m7|2026-04":{"req":270.0,"paid":true,"date":"2026-05-23"},"m7|2026-05":{"req":270.0,"paid":false},"m7|2026-06":{"req":null,"paid":false},"m8|2025-11":{"req":320.0,"paid":true,"date":"2025-11-24"},"m8|2025-12":{"req":320.0,"paid":true,"date":"2026-01-05"},"m8|2026-01":{"req":320.0,"paid":true,"date":"2026-02-07"},"m8|2026-02":{"req":320.0,"paid":true,"date":"2026-03-06"},"m8|2026-03":{"req":270.0,"paid":true,"date":"2026-04-07"},"m8|2026-04":{"req":320.0,"paid":true,"date":"2026-05-05"},"m8|2026-05":{"req":320.0,"paid":true,"date":"2026-06-06"},"m8|2026-06":{"req":null,"paid":false},"m9|2025-11":{"req":50.0,"paid":false},"m9|2025-12":{"req":270.0,"paid":false},"m9|2026-01":{"req":270.0,"paid":false},"m9|2026-02":{"req":860.0,"paid":false},"m9|2026-03":{"req":860.0,"paid":false},"m9|2026-04":{"req":1030.0,"paid":false},"m9|2026-05":{"req":980.0,"paid":true},"m9|2026-06":{"req":null,"paid":false},"m10|2025-11":{"req":270.0,"paid":true,"date":"2025-11-28"},"m10|2025-12":{"req":270.0,"paid":true,"date":"2026-01-21"},"m10|2026-01":{"req":270.0,"paid":true,"date":"2026-03-04"},"m10|2026-02":{"req":270.0,"paid":false},"m10|2026-03":{"req":540.0,"paid":true,"date":"2026-05-04"},"m10|2026-04":{"req":270.0,"paid":true,"date":"2026-06-08"},"m10|2026-05":{"req":270.0,"paid":false},"m10|2026-06":{"req":null,"paid":false},"m11|2025-11":{"req":270.0,"paid":true,"date":"2025-11-24"},"m11|2025-12":{"req":270.0,"paid":true,"date":"2025-12-28"},"m11|2026-01":{"req":270.0,"paid":true,"date":"2026-01-26"},"m11|2026-02":{"req":null,"paid":false},"m11|2026-03":{"req":null,"paid":false},"m11|2026-04":{"req":165.0,"paid":true,"date":"2026-04-28"},"m11|2026-05":{"req":115.0,"paid":true,"date":"2026-05-27"},"m11|2026-06":{"req":null,"paid":false},"m12|2025-11":{"req":370.0,"paid":true,"date":"2025-11-27"},"m12|2025-12":{"req":200.0,"paid":false},"m12|2026-01":{"req":470.0,"paid":false},"m12|2026-02":{"req":740.0,"paid":false},"m12|2026-03":{"req":1010.0,"paid":false},"m12|2026-04":{"req":960.0,"paid":false},"m12|2026-05":{"req":1230.0,"paid":false},"m12|2026-06":{"req":null,"paid":false},"m13|2025-11":{"req":100.0,"paid":true,"date":"2025-11-24"},"m13|2025-12":{"req":270.0,"paid":true,"date":"2025-12-29"},"m13|2026-01":{"req":270.0,"paid":true,"date":"2026-03-19"},"m13|2026-02":{"req":270.0,"paid":true,"date":"2026-03-19"},"m13|2026-03":{"req":270.0,"paid":false},"m13|2026-04":{"req":540.0,"paid":true,"date":"2026-05-08"},"m13|2026-05":{"req":270.0,"paid":false},"m13|2026-06":{"req":null,"paid":false},"m14|2025-11":{"req":270.0,"paid":true,"date":"2025-11-24"},"m14|2025-12":{"req":270.0,"paid":true,"date":"2025-12-23"},"m14|2026-01":{"req":270.0,"paid":true,"date":"2026-01-26"},"m14|2026-02":{"req":270.0,"paid":true,"date":"2026-03-24"},"m14|2026-03":{"req":245.0,"paid":true,"date":"2026-03-25"},"m14|2026-04":{"req":245.0,"paid":true,"date":"2026-04-25"},"m14|2026-05":{"req":245.0,"paid":true,"date":"2026-05-26"},"m14|2026-06":{"req":null,"paid":false},"m15|2025-11":{"req":270.0,"paid":true,"date":"2025-10-28"},"m15|2025-12":{"req":270.0,"paid":true,"date":"2025-12-22"},"m15|2026-01":{"req":270.0,"paid":true,"date":"2026-01-23"},"m15|2026-02":{"req":null,"paid":false},"m15|2026-03":{"req":540.0,"paid":true,"date":"2026-03-24"},"m15|2026-04":{"req":270.0,"paid":true,"date":"2026-05-03"},"m15|2026-05":{"req":270.0,"paid":true,"date":"2026-05-22"},"m15|2026-06":{"req":null,"paid":false}},"expenses":[{"month":"2025-11","desc":"Borrels november","amount":684.17,"cat":"Borrels & dixo's","id":"e0"},{"month":"2025-11","desc":"Dixo's november","amount":421,"cat":"Borrels & dixo's","id":"e1"},{"month":"2025-12","desc":"Borrels december","amount":1183.51,"cat":"Borrels & dixo's","id":"e2"},{"month":"2025-12","desc":"Herenakkoord","amount":562.89,"cat":"Activiteit","id":"e3"},{"month":"2026-01","desc":"Borrels januari","amount":995.87,"cat":"Borrels & dixo's","id":"e4"},{"month":"2026-02","desc":"Borrels februari","amount":844.05,"cat":"Borrels & dixo's","id":"e5"},{"month":"2026-02","desc":"AHC voorrondes","amount":29.4,"cat":"Activiteit","id":"e6"},{"month":"2026-03","desc":"Borrels maart","amount":1141.51,"cat":"Borrels & dixo's","id":"e7"},{"month":"2026-03","desc":"LAN dixo 26-3","amount":303.79,"cat":"Borrels & dixo's","id":"e8"},{"month":"2026-04","desc":"Borrels april","amount":1942.15,"cat":"Borrels & dixo's","id":"e9"},{"month":"2026-04","desc":"Datediner","amount":668,"cat":"Activiteit","id":"e10"},{"month":"2026-04","desc":"Kleding","amount":450,"cat":"Overig","id":"e11"},{"month":"2026-05","desc":"Borrels mei","amount":1709.58,"cat":"Borrels & dixo's","id":"e12"},{"month":"2026-05","desc":"N8W8 (netto)","amount":500,"cat":"Activiteit","id":"e13"},{"month":"2026-05","desc":"Clubvakantie sparen","amount":375,"cat":"Sparen","id":"e14"}],"income":{"2025-11":4233,"2025-12":2928,"2026-01":4155,"2026-02":2640,"2026-03":2075},"accounts":{"betaalrekening":2762,"spaarrekeningVakantie":1925,"lustrum":1350,"tegoedVereniging":1000},"debts":[],"lustrumTarget":3000,"categories":[{"name":"Borrels & dixo's","color":"#b5532a"},{"name":"Activiteit","color":"#2c3e63"},{"name":"Sparen","color":"#5f7d34"},{"name":"Overig","color":"#6b5436"}],"forecast":{"startMonth":"2026-07","horizon":8,"startSaldoOverride":null,"startSchuld":0,"avgMonths":6,"inclSchuld":false,"override":null,"betalersOverride":null,"oneOffs":[],"buckets":[{"id":"b1","name":"Naar vereniging","cat":"Borrels & dixo's","startMaand":"2026-07","eindMaand":"2027-02","totaalBedrag":10800,"enabled":true},{"id":"b2","name":"Activiteiten","cat":"Activiteit","startMaand":"2026-07","eindMaand":"2027-02","totaalBedrag":2400,"enabled":true},{"id":"b3","name":"Clubvakantie — boeking","cat":"Sparen","startMaand":"2026-07","eindMaand":"2027-02","totaalBedrag":5600,"enabled":true,"isBoekingPot":true},{"id":"b5","name":"Clubvakantie — activiteiten","cat":"Sparen","startMaand":"2026-07","eindMaand":"2027-02","totaalBedrag":1600,"enabled":true,"isActiviteitenPot":true},{"id":"b4","name":"Buffer/overig","cat":"Overig","startMaand":"2026-07","eindMaand":"2027-02","totaalBedrag":600,"enabled":true,"isBuffer":true}],"vakantie":{"boeking":{"startPot":0,"betalingen":[{"id":"p1","maand":"2026-09","bedrag":3000,"label":"Aanbetaling"},{"id":"p2","maand":"2027-02","bedrag":5000,"label":"Restbetaling"}]},"activiteiten":{"startPot":1925,"vakantiemaand":"2026-07","verwachtBedrag":2400}}},"pmPin":"1865","lastUpdated":"2026-06-17","lastUpdatedBy":"penningmeester"}
@@ -129,38 +130,54 @@ class EB extends Component{ constructor(p){super(p);this.state={err:null};} stat
   render(){ if(this.state.err) return <div className="jc-card" style={{margin:"4px 0"}}><b className="clay">Er ging iets mis bij het tonen.</b><pre style={{whiteSpace:"pre-wrap",fontSize:11,color:"#6b5436"}}>{String(this.state.err.message||this.state.err)}</pre></div>; return this.props.children; } }
 
 // ───────────── app ─────────────
-// TODO stap 4: PIN-modal vervangen door echte Supabase-auth + rol uit profiles.
-const TEMP_PM_PIN="1865";
 export default function App(){
+  const [session,setSession]=useState(undefined);
+  const [profile,setProfile]=useState(null);
   const [data,setData]=useState(null);
   const [loadError,setLoadError]=useState(null);
   const [tab,setTab]=useState("overzicht");
-  const [role,setRole]=useState("viewer");
-  const [pinOpen,setPinOpen]=useState(false);
   const loaded=useRef(false);
   const [saving,setSaving]=useState(false);
-  const edit=role==="pm";
+  const edit=profile?.role==="penningmeester";
 
-  useEffect(()=>{(async()=>{
-    try{ const n=await loadAll(); setData(n); loaded.current=true; }
-    catch(e){ setLoadError(e.message||String(e)); }
-  })();},[]);
+  useEffect(()=>{
+    supabase.auth.getSession().then(({data:{session}})=>setSession(session));
+    const {data:sub}=supabase.auth.onAuthStateChange((_event,s)=>setSession(s));
+    return ()=>sub.subscription.unsubscribe();
+  },[]);
+
+  useEffect(()=>{
+    if(!session){ setProfile(null); setData(null); loaded.current=false; return; }
+    (async()=>{
+      try{
+        const {data:p,error}=await supabase.from("profiles").select("*").eq("id",session.user.id).single();
+        if(error) throw error;
+        setProfile(p);
+        const n=await loadAll();
+        setData(n);
+        loaded.current=true;
+      }catch(e){ setLoadError(e.message||String(e)); }
+    })();
+  },[session]);
+
   useEffect(()=>{if(!loaded.current||!data)return;setSaving(true);const t=setTimeout(async()=>{
     try{ await saveAll(data); } catch(e){ console.error("Opslaan naar Supabase mislukt:",e); }
     setSaving(false);
   },400);return()=>clearTimeout(t);},[data]);
 
-  const update=(fn)=>{ if(role!=="pm")return; setData(prev=>{const n=structuredClone(prev);fn(n);n.lastUpdated=TODAY;return n;}); };
+  const update=(fn)=>{ if(!edit)return; setData(prev=>{const n=structuredClone(prev);fn(n);n.lastUpdated=TODAY;return n;}); };
 
+  if(session===undefined) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#6b5436"}}>Laden…</div>;
+  if(!session) return <LoginScreen/>;
   if(loadError) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#b5532a"}}>Kon de kas niet laden: {loadError}</div>;
-  if(!data) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#6b5436"}}>Kas laden…</div>;
+  if(!data||!profile) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#6b5436"}}>Kas laden…</div>;
 
   const TABS=[["overzicht","Overzicht"],["betalingen","Betalingen"],["achterstand","Achterstanden"],["uitgaves","Uitgaves"],["lustrum","Lustrum"],["prognose","Prognose"]];
   if(edit) TABS.push(["beheer","Beheer"]);
 
   return (
     <div className="jc-root">
-      <Header data={data} saving={saving} role={role} onPm={()=>setPinOpen(true)} onView={()=>{setRole("viewer");if(tab==="beheer")setTab("overzicht");}}/>
+      <Header data={data} saving={saving} edit={edit} email={session.user.email} onLogout={()=>supabase.auth.signOut()}/>
       <div className="jc-bogolan"/>
       <nav className="jc-tabs">{TABS.map(([k,l])=><button key={k} className={"jc-tab"+(tab===k?" on":"")} onClick={()=>setTab(k)}>{l}</button>)}</nav>
       <main className="jc-main"><EB key={tab}>
@@ -173,24 +190,51 @@ export default function App(){
         {tab==="beheer" && edit && <Beheer data={data} update={update} setData={setData}/>}
       </EB></main>
       <footer className="jc-foot">Gedeelde kas · iedereen met deze app ziet dezelfde gegevens · {data.iban}</footer>
-      {pinOpen && <PinModal correct={TEMP_PM_PIN} onClose={()=>setPinOpen(false)} onOk={()=>{setRole("pm");setPinOpen(false);}}/>}
     </div>
   );
 }
 
-function PinModal({correct,onOk,onClose}){
-  const [v,setV]=useState("");const [err,setErr]=useState(false);
-  const submit=()=>{ if(v===String(correct)) onOk(); else {setErr(true);setV("");} };
-  return (<div className="jc-overlay" onClick={onClose}><div className="jc-pin" onClick={e=>e.stopPropagation()}>
-    <div className="jc-pintitle">Penningmeester-modus</div><p className="jc-pinsub">Voer de pincode in om de kas te bewerken.</p>
-    <input className={"jc-pinin"+(err?" err":"")} type="password" inputMode="numeric" autoFocus value={v} placeholder="••••" onChange={e=>{setV(e.target.value);setErr(false);}} onKeyDown={e=>e.key==="Enter"&&submit()}/>
-    {err && <span className="jc-pinerr">Onjuiste pincode</span>}
-    <div className="jc-pinrow"><button className="jc-ghost" onClick={onClose}>Annuleren</button><button className="jc-primary" onClick={submit}>Ontgrendelen</button></div>
-  </div></div>);
+function LoginScreen(){
+  const [mode,setMode]=useState("login");
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [name,setName]=useState("");
+  const [err,setErr]=useState(null);
+  const [info,setInfo]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const submit=async(e)=>{
+    e.preventDefault();setErr(null);setInfo(null);setBusy(true);
+    try{
+      if(mode==="login"){
+        const {error}=await supabase.auth.signInWithPassword({email,password});
+        if(error)throw error;
+      }else{
+        const {error}=await supabase.auth.signUp({email,password,options:{data:{display_name:name}}});
+        if(error)throw error;
+        setInfo("Account aangemaakt. Check je mail als er een bevestiging nodig is, of je bent al ingelogd.");
+      }
+    }catch(e){ setErr(e.message||String(e)); }
+    setBusy(false);
+  };
+  return (<div className="jc-root" style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <form className="jc-pin" onSubmit={submit}>
+      <div className="jc-pintitle"><span className="jc-diamond" style={{display:"inline-block",marginRight:8,verticalAlign:"middle"}}/>Jaarclub kas</div>
+      <p className="jc-pinsub">{mode==="login"?"Log in met je e-mail en wachtwoord.":"Maak een account aan om mee te kunnen kijken."}</p>
+      {mode==="signup"&&<input className="jc-pinin" style={{fontSize:14,letterSpacing:0,marginBottom:8,textAlign:"left"}} placeholder="Naam" value={name} onChange={e=>setName(e.target.value)}/>}
+      <input className="jc-pinin" style={{fontSize:14,letterSpacing:0,marginBottom:8,textAlign:"left"}} type="email" placeholder="E-mail" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)}/>
+      <input className="jc-pinin" style={{fontSize:14,letterSpacing:0,textAlign:"left"}} type="password" placeholder="Wachtwoord" autoComplete={mode==="login"?"current-password":"new-password"} required minLength={6} value={password} onChange={e=>setPassword(e.target.value)}/>
+      {err && <span className="jc-pinerr">{err}</span>}
+      {info && <span className="jc-pinerr" style={{color:"var(--sahel)"}}>{info}</span>}
+      <div className="jc-pinrow">
+        <button type="button" className="jc-ghost" onClick={()=>{setMode(mode==="login"?"signup":"login");setErr(null);setInfo(null);}}>{mode==="login"?"nieuw account":"al een account"}</button>
+        <button type="submit" className="jc-primary" disabled={busy}>{mode==="login"?"inloggen":"aanmaken"}</button>
+      </div>
+    </form>
+  </div>);
 }
 
 // ───────────── header ─────────────
-function Header({data,saving,role,onPm,onView}){
+function Header({data,saving,edit,email,onLogout}){
   const saldo=data.accounts.betaalrekening;
   return (<header className="jc-header">
     <div className="jc-headtop"><div className="jc-brand"><span className="jc-diamond"/><div>
@@ -198,7 +242,8 @@ function Header({data,saving,role,onPm,onView}){
       <div className="jc-gsub">Laatst bijgewerkt {dmy(data.lastUpdated)}{data.lastUpdatedBy?` · ${data.lastUpdatedBy}`:""}</div>
     </div></div><div className="jc-headright">
       <span className={"jc-save"+(saving?" busy":"")}>{saving?"opslaan…":"opgeslagen"}</span>
-      {role==="pm"?<button className="jc-rolebtn pm" onClick={onView}>● Penningmeester</button>:<button className="jc-rolebtn" onClick={onPm}>Kijkmodus · ontgrendel</button>}
+      <span className={"jc-rolebtn"+(edit?" pm":"")} title={email}>{edit?"● Penningmeester":"Kijkmodus"}</span>
+      <button className="jc-rolebtn" onClick={onLogout}>Uitloggen</button>
     </div></div>
     <div className="jc-balance"><div className="jc-balmain"><span className="jc-ballabel">Saldo betaalrekening</span><span className="jc-balnum">{eur0(saldo)}</span></div>
       <div className="jc-balside"><div><span className="ochre">{eur0(data.accounts.lustrum)}</span><label>lustrum spaarpot</label></div>
