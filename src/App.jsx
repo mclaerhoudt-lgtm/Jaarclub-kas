@@ -296,6 +296,8 @@ function Uitgaves({data,update,edit}){
   const del=(id)=>update(d=>{d.expenses=d.expenses.filter(e=>e.id!==id);});
   const setExp=(id,k,v)=>update(d=>{const e=d.expenses.find(x=>x.id===id);if(!e)return;e[k]=k==="amount"?(Number(v)||0):v;});
   const addCat=()=>{if(!catName.trim())return;update(d=>{(d.categories=d.categories||[]).push({name:catName.trim(),color:catColor2});});setForm(f=>({...f,cat:catName.trim()}));setCatName("");setNewCat(false);};
+  const [newCatRow,setNewCatRow]=useState(null);
+  const addCatForRow=(id)=>{if(!catName.trim())return;update(d=>{(d.categories=d.categories||[]).push({name:catName.trim(),color:catColor2});const e=d.expenses.find(x=>x.id===id);if(e)e.cat=catName.trim();});setCatName("");setNewCatRow(null);};
 
   // chart: gestapelde uitgave-staaf + inkomsten-staaf per maand
   const chartMonths=monthsAsc;
@@ -330,9 +332,11 @@ function Uitgaves({data,update,edit}){
           {items.map(e=>(edit?(<div key={e.id} className="jc-exprow edit">
             <i className="jc-cattag" style={{background:catColor(data,e.cat)}}/>
             <input className="jc-expname" value={e.desc} onChange={ev=>setExp(e.id,"desc",ev.target.value)}/>
-            <select className="jc-expcatsel" value={e.cat} onChange={ev=>setExp(e.id,"cat",ev.target.value)}>{cats.map(c=><option key={c.name}>{c.name}</option>)}{!cats.find(c=>c.name===e.cat)&&<option>{e.cat}</option>}</select>
+            <select className="jc-expcatsel" value={e.cat} onChange={ev=>{if(ev.target.value==="__new")setNewCatRow(e.id);else setExp(e.id,"cat",ev.target.value);}}>{cats.map(c=><option key={c.name}>{c.name}</option>)}{!cats.find(c=>c.name===e.cat)&&<option>{e.cat}</option>}<option value="__new">+ nieuwe categorie…</option></select>
             <input className="jc-expamtin" type="number" value={e.amount} onChange={ev=>setExp(e.id,"amount",ev.target.value)}/>
-            <button className="jc-del" onClick={()=>del(e.id)}>✕</button></div>):(
+            <button className="jc-del" onClick={()=>del(e.id)}>✕</button>
+            {newCatRow===e.id&&<div className="jc-newcat"><input placeholder="categorienaam" value={catName} onChange={ev=>setCatName(ev.target.value)}/><input type="color" value={catColor2} onChange={ev=>setCatColor2(ev.target.value)}/><button className="jc-save-btn" onClick={()=>addCatForRow(e.id)}>opslaan</button></div>}
+            </div>):(
             <div key={e.id} className="jc-exprow"><i className="jc-cattag" style={{background:catColor(data,e.cat)}}/><span className="jc-expdesc">{e.desc}<span className="jc-expcat">{e.cat}</span></span><span className="jc-expamt">{eur(e.amount)}</span></div>)))}
         </div>);})}
     </div>
