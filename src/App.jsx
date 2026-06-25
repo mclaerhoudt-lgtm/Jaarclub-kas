@@ -251,7 +251,7 @@ function Betalingen({data,update,edit}){
     <div className="jc-gridscroll"><table className="jc-paytable">
       <thead><tr><th className="jc-sticky jc-nameh">Lid</th>{months.map(mo=><th key={mo}>{mLabel(mo)}</th>)}</tr></thead>
       <tbody>{data.members.map(m=>(<tr key={m.id}>
-        <td className="jc-sticky jc-namecell" onClick={()=>edit&&setSel(m.id)} style={{cursor:edit?"pointer":"default"}}><span className="jc-av sm" style={{background:m.color}}>{m.short[0]}</span><span className="jc-nm">{m.short}</span><span className="jc-rate">{eur0(m.rate)}</span></td>
+        <td className="jc-sticky jc-namecell" onClick={()=>edit&&setSel(m.id)} style={{cursor:edit?"pointer":"default"}}><div className="jc-namerow"><span className="jc-av sm" style={{background:m.color}}>{m.short[0]}</span><span className="jc-nm">{m.short}</span><span className="jc-rate">{eur0(m.rate)}</span></div></td>
         {months.map(mo=>{const paid=isPaid(data,m.id,mo);const entry=hasEntry(data,m.id,mo);const req=cellReq(data,m.id,mo);const date=data.ledger[`${m.id}|${mo}`]?.date;
           return(<td key={mo} className={"jc-cell "+(paid?"paid":entry?"open":"none")} onClick={()=>edit&&setEditCell({mid:m.id,mo})} style={{cursor:edit?"pointer":"default"}}><span className="jc-mark">{paid?"✓":entry?"✕":"·"}</span><span className="jc-amt">{eur0(req)}</span>{paid&&date&&<span className="jc-date">{dmShort(date)}</span>}</td>);})}
       </tr>))}</tbody>
@@ -268,6 +268,7 @@ function CellEditModal({data,update,mid,mo,onClose}){
   const [paid,setPaid]=useState(!!e.paid);
   const [date,setDate]=useState(e.date||"");
   const save=()=>{update(d=>{const n=req===""?null:Number(req);d.ledger[`${mid}|${mo}`]={req:isNaN(n)?null:n,paid,date:paid?(date||null):null};});onClose();};
+  const wis=()=>{update(d=>{delete d.ledger[`${mid}|${mo}`];});onClose();};
   return (<div className="jc-overlay" onClick={onClose}><div className="jc-pin" onClick={ev=>ev.stopPropagation()}>
     <div className="jc-pintitle">{m.short} · {mLabel(mo,true)}</div>
     <p className="jc-pinsub">Bedrag, betaald-status en datum aanpassen.</p>
@@ -276,6 +277,9 @@ function CellEditModal({data,update,mid,mo,onClose}){
       <button type="button" className={"jc-toggle "+(paid?"on":"")} onClick={()=>setPaid(p=>!p)} style={{flex:1}}>{paid?"✓ betaald":"✕ niet betaald"}</button>
     </div>
     {paid&&<input className="jc-pinin" style={{fontSize:14,letterSpacing:0,textAlign:"left"}} type="date" value={date} onChange={ev=>setDate(ev.target.value)}/>}
+    <div className="jc-pinrow" style={{marginTop:8}}>
+      <button type="button" className="jc-mini" onClick={wis}>· vakje legen (niks)</button>
+    </div>
     <div className="jc-pinrow">
       <button className="jc-ghost" onClick={onClose}>annuleren</button>
       <button className="jc-primary" onClick={save}>opslaan</button>
