@@ -473,19 +473,55 @@ function ImportModal({data,update,onClose}){
 }
 
 // ───────────── lustrum ─────────────
+function monthsRemaining(from,to){if(!from||!to)return null;const[ay,am]=from.split("-").map(Number);const[by,bm]=to.split("-").map(Number);return (by-ay)*12+(bm-am)+1;}
 function Lustrum({data,update,edit}){
   const rows=[...data.members].sort((a,b)=>(b.saved||0)-(a.saved||0));
-  const tot=data.members.reduce((a,m)=>a+(m.saved||0),0);const doel=data.members.reduce((a,m)=>a+(m.target||0),0);
+  const target=data.lustrumTarget||0;
+  const tot=data.members.reduce((a,m)=>a+(m.saved||0),0);const doel=data.members.length*target;
+  const einddatum=data.lustrumEinddatum||null;
+  const maandenOver=einddatum?monthsRemaining(NOW,einddatum):null;
   const setSaved=(id,v)=>update(d=>{d.members.find(x=>x.id===id).saved=Number(v)||0;});
   const add=(id,v)=>update(d=>{const m=d.members.find(x=>x.id===id);m.saved=(m.saved||0)+v;});
+  const setTarget=(v)=>update(d=>{const n=Number(v)||0;d.lustrumTarget=n;d.members.forEach(m=>{m.target=n;});});
+  const setEinddatum=(v)=>update(d=>{d.lustrumEinddatum=v||null;});
+  const monthOptions=useMemo(()=>Array.from({length:73},(_,i)=>addMonth(addMonth(NOW,-12),i)),[]);
+
+  const perLid=rows.map(m=>{
+    const nogTeSparen=Math.max(0,target-(m.saved||0));
+    const doelBereikt=nogTeSparen<=0;
+    let perMaand=null,status=null;
+    if(!doelBereikt){
+      if(!einddatum)status="geen einddatum";
+      else if(maandenOver<=0)status="datum verstreken";
+      else perMaand=nogTeSparen/maandenOver;
+    }
+    return{m,nogTeSparen,doelBereikt,perMaand,status};
+  });
+  const totNogTeSparen=perLid.reduce((a,r)=>a+r.nogTeSparen,0);
+  const gemPerMaand=einddatum&&maandenOver>0?totNogTeSparen/maandenOver:null;
+
   return (<div className="jc-grid">
     <div className="jc-card"><div className="jc-cardhead"><h3>Lustrum sparen — clubreis</h3><span className="jc-bigochre">{eur0(tot)}</span></div>
-      <div className="jc-lustrumbar"><div style={{width:`${Math.min(100,(tot/doel)*100)}%`}}/></div>
-      <p className="jc-sub">{eur0(tot)} van {eur0(doel)} ({Math.round((tot/doel)*100)}%) · doel {eur0(data.lustrumTarget)} p.p.</p></div>
+      <div className="jc-lustrumbar"><div style={{width:`${doel?Math.min(100,(tot/doel)*100):0}%`}}/></div>
+      <p className="jc-sub">{eur0(tot)} van {eur0(doel)} ({doel?Math.round((tot/doel)*100):0}%) · doel {eur0(target)} p.p.</p>
+      {edit&&<div className="jc-fgrid" style={{marginTop:10}}>
+        <Field label="Einddoel per lid"><input type="number" value={target} onChange={e=>setTarget(e.target.value)}/></Field>
+        <Field label="Einddatum"><select value={einddatum||""} onChange={e=>setEinddatum(e.target.value)}><option value="">— geen —</option>{monthOptions.map(k=><option key={k} value={k}>{mLabel(k,true)}</option>)}</select></Field>
+      </div>}
+      <p className="jc-sub" style={{marginTop:8}}>
+        Nog te sparen (groep): <b className="clay">{eur0(totNogTeSparen)}</b>
+        {einddatum&&(maandenOver>0?<> · gemiddeld <b className="ochre">{eur0(gemPerMaand)}</b>/maand tot {mLabel(einddatum,true)}</>:<> · <span className="clay">einddatum ({mLabel(einddatum,true)}) is verstreken</span></>)}
+        {!einddatum&&<> · stel een einddatum in om het maandbedrag te zien</>}
+      </p>
+    </div>
     <div className="jc-card jc-nopad"><div className="jc-cardhead pad"><h3>Per lid</h3>{edit&&<span className="jc-hint">+50 of typ een totaal</span>}</div>
-      <div className="jc-luslist">{rows.map(m=>{const pct=Math.min(100,((m.saved||0)/(m.target||3000))*100);
+      <div className="jc-luslist">{perLid.map(({m,nogTeSparen,doelBereikt,perMaand,status})=>{const pct=target?Math.min(100,((m.saved||0)/target)*100):0;
         return(<div key={m.id} className="jc-lusrow"><span className="jc-av sm" style={{background:m.color}}>{m.short[0]}</span>
-          <div className="jc-lusmid"><div className="jc-lustop"><span>{m.short}</span><span className="ochre">{eur0(m.saved||0)}</span></div><div className="jc-lustrack"><div style={{width:pct+"%"}}/></div></div>
+          <div className="jc-lusmid">
+            <div className="jc-lustop"><span>{m.short}</span><span className="ochre">{eur0(m.saved||0)}</span></div>
+            <div className="jc-lustrack"><div style={{width:pct+"%"}}/></div>
+            <div className="jc-lussub">{doelBereikt?<span className="sahel">✓ doel bereikt</span>:<>nog <b className="clay">{eur0(nogTeSparen)}</b>{perMaand!=null?<> · <b className="ochre">{eur0(perMaand)}</b>/maand</>:status?<> · {status}</>:null}</>}</div>
+          </div>
           {edit&&<span style={{display:"contents"}}><input className="jc-lusin" type="number" value={m.saved||0} onChange={e=>setSaved(m.id,e.target.value)}/><button className="jc-plus" onClick={()=>add(m.id,50)}>+50</button></span>}</div>);})}</div></div>
   </div>);
 }

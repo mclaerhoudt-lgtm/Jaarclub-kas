@@ -61,12 +61,14 @@ create table if not exists club (
   iban text not null default '',
   beheerders text not null default '',
   lustrum_target numeric not null default 3000,
+  lustrum_einddatum text,
   pm_pin text not null default '1865',
   last_updated date,
   last_updated_by text
 );
 insert into club (id) values (1) on conflict (id) do nothing;
 alter table club add column if not exists pm_pin text not null default '1865';
+alter table club add column if not exists lustrum_einddatum text;
 
 -- ───────────── leden ─────────────
 create table if not exists members (

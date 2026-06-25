@@ -39,6 +39,7 @@ export async function loadAll() {
     iban: club.data.iban,
     beheerders: club.data.beheerders,
     lustrumTarget: club.data.lustrum_target,
+    lustrumEinddatum: club.data.lustrum_einddatum,
     pmPin: club.data.pm_pin,
     lastUpdated: club.data.last_updated,
     lastUpdatedBy: club.data.last_updated_by,
@@ -108,7 +109,7 @@ export async function saveAll(data) {
   const step1 = await Promise.all([
     supabase.from("club").update({
       group_name: data.groupName, iban: data.iban, beheerders: data.beheerders,
-      lustrum_target: data.lustrumTarget, pm_pin: data.pmPin, last_updated: data.lastUpdated, last_updated_by: data.lastUpdatedBy,
+      lustrum_target: data.lustrumTarget, lustrum_einddatum: data.lustrumEinddatum, pm_pin: data.pmPin, last_updated: data.lastUpdated, last_updated_by: data.lastUpdatedBy,
     }).eq("id", 1),
     supabase.from("accounts").update({
       betaalrekening: data.accounts.betaalrekening,
