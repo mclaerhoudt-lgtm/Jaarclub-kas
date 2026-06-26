@@ -100,6 +100,11 @@ async function syncCollection(table, idCol, rows) {
 }
 
 export async function saveAll(data) {
+  // Weiger op te slaan als kritieke collecties leeg zijn — dit voorkomt dat een
+  // mislukte of lege loadAll() bij de volgende auto-save de hele DB weggooit.
+  if (!data.members || data.members.length === 0) {
+    throw new Error("saveAll geweigerd: ledenlijst is leeg (mogelijke laadout)");
+  }
   const f = data.forecast;
   const check = (r) => { if (r && r.error) throw r.error; };
 
