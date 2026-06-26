@@ -179,6 +179,7 @@ export default function App(){
   const [role,setRole]=useState("viewer");
   const [pinOpen,setPinOpen]=useState(false);
   const loaded=useRef(false);
+  const dirty=useRef(false);
   const [saving,setSaving]=useState(false);
   const edit=role==="pm";
 
@@ -187,12 +188,17 @@ export default function App(){
     catch(e){ setLoadError(e.message||String(e)); }
   })();},[]);
 
-  useEffect(()=>{if(!loaded.current||!data)return;setSaving(true);const t=setTimeout(async()=>{
-    try{ await saveAll(data); } catch(e){ console.error("Opslaan naar Supabase mislukt:",e); }
-    setSaving(false);
-  },400);return()=>clearTimeout(t);},[data]);
+  useEffect(()=>{
+    if(!loaded.current||!data||!dirty.current)return;
+    setSaving(true);
+    const t=setTimeout(async()=>{
+      try{ await saveAll(data); } catch(e){ console.error("Opslaan naar Supabase mislukt:",e); }
+      setSaving(false);
+    },400);
+    return()=>clearTimeout(t);
+  },[data]);
 
-  const update=(fn)=>{ if(role!=="pm")return; setData(prev=>{const n=structuredClone(prev);fn(n);n.lastUpdated=TODAY;return n;}); };
+  const update=(fn)=>{ if(role!=="pm")return; dirty.current=true; setData(prev=>{const n=structuredClone(prev);fn(n);n.lastUpdated=TODAY;return n;}); };
 
   if(loadError) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#b5532a"}}>Kon de kas niet laden: {loadError}</div>;
   if(!data) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#6b5436"}}>Kas laden…</div>;
