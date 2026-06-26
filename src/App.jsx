@@ -99,8 +99,8 @@ const MFULL=["januari","februari","maart","april","mei","juni","juli","augustus"
 const MSHORT=["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"];
 const eur=(n)=>"€ "+(Math.round((n||0)*100)/100).toLocaleString("nl-NL",{minimumFractionDigits:0,maximumFractionDigits:2});
 const eur0=(n)=>"€ "+Math.round(n||0).toLocaleString("nl-NL");
-function mLabel(k,full=false){const[y,m]=k.split("-").map(Number);return (full?MFULL:MSHORT)[m-1]+" "+(full?y:"'"+String(y).slice(2));}
-function addMonth(k,n){let[y,m]=k.split("-").map(Number);m+=n;while(m>12){m-=12;y++;}while(m<1){m+=12;y--;}return `${y}-${String(m).padStart(2,"0")}`;}
+function mLabel(k,full=false){if(!k)return"—";const[y,m]=k.split("-").map(Number);return (full?MFULL:MSHORT)[m-1]+" "+(full?y:"'"+String(y).slice(2));}
+function addMonth(k,n){if(!k)k=NOW;let[y,m]=k.split("-").map(Number);m+=n;while(m>12){m-=12;y++;}while(m<1){m+=12;y--;}return `${y}-${String(m).padStart(2,"0")}`;}
 function dmy(iso){if(!iso)return "—";const[y,m,dd]=iso.split("-").map(Number);return `${dd} ${MSHORT[m-1]} ${y}`;}
 function dmShort(iso){if(!iso)return "";const[,m,dd]=iso.split("-").map(Number);return `${dd}-${m}`;}
 const NOW=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;})();
@@ -124,6 +124,49 @@ function monthsBetween(a,b){if(!a||!b)return 0;const[ay,am]=a.split("-").map(Num
 function bucketMonthlyTotal(b){return b.startMaand&&b.eindMaand?(b.totaalBedrag||0)/monthsBetween(b.startMaand,b.eindMaand):0;}
 function bucketActiveIn(b,mo){return !!(b.startMaand&&b.eindMaand&&mo>=b.startMaand&&mo<=b.eindMaand);}
 
+// ───────────── data-normalisatie ─────────────
+// Vult ontbrekende of null/undefined velden aan met sensible defaults nadat
+// data uit Supabase is geladen. Zo breekt een nieuw veld dat nog niet in de DB
+// staat (of dat NULL is) nooit de app.
+function normalizeData(d){
+  if(!d.months)d.months=[];
+  if(!d.ledger)d.ledger={};
+  if(!d.expenses)d.expenses=[];
+  if(!d.income)d.income={};
+  if(!d.categories)d.categories=[];
+  if(!d.members)d.members=[];
+  if(!d.accounts)d.accounts={};
+  if(d.accounts.betaalrekening==null)d.accounts.betaalrekening=0;
+  if(d.accounts.spaarrekeningVakantie==null)d.accounts.spaarrekeningVakantie=0;
+  if(d.accounts.lustrum==null)d.accounts.lustrum=0;
+  if(d.accounts.tegoedVereniging==null)d.accounts.tegoedVereniging=0;
+  if(d.lustrumTarget==null)d.lustrumTarget=3000;
+  if(!d.forecast)d.forecast={};
+  const f=d.forecast;
+  if(!f.startMonth)f.startMonth=NOW;
+  if(f.horizon==null)f.horizon=8;
+  if(f.avgMonths==null)f.avgMonths=6;
+  if(f.startSchuld==null)f.startSchuld=0;
+  if(f.inclSchuld==null)f.inclSchuld=false;
+  if(!f.oneOffs)f.oneOffs=[];
+  if(!f.buckets)f.buckets=[];
+  f.buckets.forEach(b=>{
+    if(!b.startMaand)b.startMaand=f.startMonth;
+    if(!b.eindMaand)b.eindMaand=addMonth(f.startMonth,Math.max(1,f.horizon)-1);
+    if(b.totaalBedrag==null)b.totaalBedrag=0;
+  });
+  if(!f.vakantie)f.vakantie={};
+  const v=f.vakantie;
+  if(!v.boeking)v.boeking={};
+  if(v.boeking.startPot==null)v.boeking.startPot=0;
+  if(!v.boeking.betalingen)v.boeking.betalingen=[];
+  v.boeking.betalingen.forEach(b=>{if(!b.maand)b.maand=f.startMonth;});
+  if(!v.activiteiten)v.activiteiten={};
+  if(v.activiteiten.startPot==null)v.activiteiten.startPot=0;
+  if(v.activiteiten.verwachtBedrag==null)v.activiteiten.verwachtBedrag=0;
+  return d;
+}
+
 // ───────────── error boundary ─────────────
 class EB extends Component{ constructor(p){super(p);this.state={err:null};} static getDerivedStateFromError(e){return{err:e};}
   render(){ if(this.state.err) return <div className="jc-card" style={{margin:"4px 0"}}><b className="clay">Er ging iets mis bij het tonen.</b><pre style={{whiteSpace:"pre-wrap",fontSize:11,color:"#6b5436"}}>{String(this.state.err.message||this.state.err)}</pre></div>; return this.props.children; } }
@@ -140,7 +183,7 @@ export default function App(){
   const edit=role==="pm";
 
   useEffect(()=>{(async()=>{
-    try{ const n=await loadAll(); setData(n); loaded.current=true; }
+    try{ const n=await loadAll(); setData(normalizeData(n)); loaded.current=true; }
     catch(e){ setLoadError(e.message||String(e)); }
   })();},[]);
 
