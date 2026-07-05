@@ -478,27 +478,49 @@ function Uitgaves({data,update,edit}){
 function normName(s){return (s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z ]/g," ").split(/\s+/).filter(t=>t.length>2);}
 function matchMember(name,members){const toks=normName(name);let best=null,sc=0;for(const m of members){const mt=normName(m.name).concat(normName(m.short));let s=0;for(const t of toks)if(mt.includes(t))s++;if(s>sc){sc=s;best=m;}}return sc>=1?best:null;}
 function guessCat(desc,cats){const d=(desc||"").toLowerCase();if(/borrel|bier|drank|cafe|kroeg|dranken|dixo|disco/.test(d))return "Borrels & dixo's";if(/diner|eten|restaurant|activiteit|uitje|reis|n8w8|herenak|vebo|lancet/.test(d))return "Activiteit";if(/spar|lustrum|vakantie/.test(d))return "Sparen";return null;}
+// Kolom met de transactie-/boekingsdatum, niet de rente-/valuta-/verwerkingsdatum
+// (banken zetten die kolommen soms vóór de echte datumkolom).
+function findDateCol(head){
+  const wrong=/rente|valuta|verwerk/;
+  const i=head.findIndex(h=>/datum|date/.test(h)&&!wrong.test(h));
+  return i>=0?i:head.findIndex(h=>/datum|date/.test(h));
+}
+// Nederlandse bankformaten: DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD, YYYYMMDD.
+// Dag/maand alleen als dag-eerst uitgelegd (NL-conventie) — nooit maand-eerst gokken.
+// Kan het echt niet herkend worden, dan geven we null terug in plaats van te raden.
+function parseNLDate(raw){
+  const s=(raw||"").trim().split(/[ T]/)[0];
+  if(!s)return null;
+  let m,y,mo,d;
+  if((m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/))){y=+m[1];mo=+m[2];d=+m[3];}
+  else if((m=s.match(/^(\d{4})(\d{2})(\d{2})$/))){y=+m[1];mo=+m[2];d=+m[3];}
+  else if((m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/))){d=+m[1];mo=+m[2];y=+m[3];}
+  else return null;
+  if(mo<1||mo>12||d<1||d>31)return null;
+  const y4=String(y).padStart(4,"0"),mo2=String(mo).padStart(2,"0"),d2=String(d).padStart(2,"0");
+  return{date:`${y4}-${mo2}-${d2}`,mo:`${y4}-${mo2}`};
+}
 function parseCSV(text){
   text=text.replace(/^﻿/,"");const lines=text.split(/\r?\n/).filter(l=>l.trim());if(!lines.length)return{rows:[],err:"Leeg bestand"};
   const delim=(lines[0].match(/;/g)||[]).length>=(lines[0].match(/,/g)||[]).length?";":",";
   const split=(l)=>{const out=[];let cur="",q=false;for(let i=0;i<l.length;i++){const c=l[i];if(c==='"'){if(q&&l[i+1]==='"'){cur+='"';i++;}else q=!q;}else if(c===delim&&!q){out.push(cur);cur="";}else cur+=c;}out.push(cur);return out.map(s=>s.trim().replace(/^"|"$/g,""));};
   const head=split(lines[0]).map(h=>h.toLowerCase());
   const find=(...keys)=>head.findIndex(h=>keys.some(k=>h.includes(k)));
-  const iDate=find("datum","date");const iAmt=find("bedrag","amount","mutatie");const iName=find("naam tegenpartij","tegenpartij","naam / omschrijving","naam","name");const iDesc=find("omschrijving","mededeling","description","memo");const iAfBij=find("af bij","af/bij","debit","credit","bij/af");const iCode=find("af bij","debit");
+  const iDate=findDateCol(head);const iAmt=find("bedrag","amount","mutatie");const iName=find("naam tegenpartij","tegenpartij","naam / omschrijving","naam","name");const iDesc=find("omschrijving","mededeling","description","memo");const iAfBij=find("af bij","af/bij","debit","credit","bij/af");
   const rows=[];
   for(let i=1;i<lines.length;i++){const c=split(lines[i]);if(c.length<2)continue;
     let raw=(iAmt>=0?c[iAmt]:"")||"";let amt=parseFloat(raw.replace(/\./g,"").replace(",",".").replace(/[^0-9.\-]/g,""));if(isNaN(amt))continue;
     if(iAfBij>=0){const ab=(c[iAfBij]||"").toLowerCase();if(ab.includes("af")||ab.includes("debet"))amt=-Math.abs(amt);else if(ab.includes("bij")||ab.includes("credit"))amt=Math.abs(amt);}
-    let dateRaw=(iDate>=0?c[iDate]:"")||"";let mo=null,date=null;const m1=dateRaw.match(/(\d{4})[-\/]?(\d{2})[-\/]?(\d{2})/);const m2=dateRaw.match(/(\d{2})[-\/](\d{2})[-\/](\d{4})/);
-    if(m1){mo=`${m1[1]}-${m1[2]}`;date=`${m1[1]}-${m1[2]}-${m1[3]}`;}else if(m2){mo=`${m2[3]}-${m2[2]}`;date=`${m2[3]}-${m2[2]}-${m2[1]}`;}
+    const parsed=parseNLDate(iDate>=0?c[iDate]:"");
     const name=(iName>=0?c[iName]:"")||"";const desc=(iDesc>=0?c[iDesc]:"")||name;
-    rows.push({amt,mo,date,name,desc:desc||name});
+    rows.push({amt,date:parsed?parsed.date:null,mo:parsed?parsed.mo:null,name,desc:desc||name});
   }
-  return{rows,cols:{iDate,iAmt,iName,iDesc},err:rows.length?null:"Geen herkenbare transacties — controleer of het een bankexport (CSV) is."};
+  return{rows,err:rows.length?null:"Geen herkenbare transacties — controleer of het een bankexport (CSV) is."};
 }
 
 function ImportModal({data,update,onClose}){
   const [step,setStep]=useState("upload");const [err,setErr]=useState(null);
+  const [kind,setKind]=useState("beide");
   const [inc,setInc]=useState([]);const [out,setOut]=useState([]);
   const [newCatFor,setNewCatFor]=useState(null);const [catName,setCatName]=useState("");const [catColor2,setCatColor2]=useState("#9c6b3f");
   const cats=data.categories||[];
@@ -508,14 +530,14 @@ function ImportModal({data,update,onClose}){
       const incoming=[],outgoing=[];
       rows.forEach((row,idx)=>{
         if(row.amt>0){
-          const m=matchMember(row.name,data.members);const mo=row.mo&&data.months.includes(row.mo)?row.mo:(data.months.includes(NOW)?NOW:data.months[data.months.length-1]);
-          const dup=m?isPaid(data,m.id,mo):false;
-          incoming.push({id:"i"+idx,name:row.name,amt:row.amt,mo,date:row.date,memberId:m?m.id:"",sel:!!m&&!dup,dup});
+          const m=matchMember(row.name,data.members);
+          const dup=m&&row.date?isPaid(data,m.id,row.date.slice(0,7)):false;
+          incoming.push({id:"i"+idx,name:row.name,amt:row.amt,date:row.date,memberId:m?m.id:"",sel:!!m&&!!row.date&&!dup});
         }else if(row.amt<0){
-          const mo=row.mo&&data.months.includes(row.mo)?row.mo:(data.months.includes(NOW)?NOW:data.months[data.months.length-1]);
-          const amount=Math.abs(row.amt);const dup=data.expenses.some(x=>x.month===mo&&Math.abs(x.amount-amount)<0.02);
+          const amount=Math.abs(row.amt);
+          const dup=row.date?data.expenses.some(x=>x.month===row.date.slice(0,7)&&Math.abs(x.amount-amount)<0.02):false;
           const cat=guessCat(row.desc,cats);
-          outgoing.push({id:"o"+idx,desc:row.desc.slice(0,60),amt:amount,mo,cat:cat||"",sel:!dup,dup,unclear:!cat});
+          outgoing.push({id:"o"+idx,desc:row.desc.slice(0,60),amt:amount,date:row.date,cat:cat||"",sel:!!row.date&&!dup});
         }
       });
       setInc(incoming);setOut(outgoing);setErr(null);setStep("review");
@@ -524,16 +546,32 @@ function ImportModal({data,update,onClose}){
 
   const setI=(id,k,v)=>setInc(a=>a.map(x=>x.id===id?{...x,[k]:v}:x));
   const setO=(id,k,v)=>setOut(a=>a.map(x=>x.id===id?{...x,[k]:v}:x));
-  const needCat=out.filter(o=>o.sel&&!o.cat);
+  const rowIncDup=(x)=>x.memberId&&x.date?isPaid(data,x.memberId,x.date.slice(0,7)):false;
+  const rowOutDup=(x)=>x.date?data.expenses.some(e=>e.month===x.date.slice(0,7)&&Math.abs(e.amount-x.amt)<0.02):false;
+  const showInc=kind!=="uitgaves",showOut=kind!=="inkomsten";
+  const needCat=showOut?out.filter(o=>o.sel&&!o.cat):[];
+  const needDate=[...(showInc?inc:[]),...(showOut?out:[])].filter(x=>x.sel&&!x.date);
   const addCat=()=>{const name=catName.trim();if(!name)return;update(d=>{(d.categories=d.categories||[]).push({name,color:catColor2});});if(newCatFor)setO(newCatFor,"cat",name);setCatName("");setNewCatFor(null);};
 
   const apply=()=>{update(d=>{
-    inc.filter(x=>x.sel&&x.memberId).forEach(x=>{if(!d.months.includes(x.mo)){d.months.push(x.mo);d.months.sort();}const k=`${x.memberId}|${x.mo}`;const e=d.ledger[k]||{};d.ledger[k]={...e,paid:true,req:e.req!=null?e.req:Math.round(x.amt),date:e.date||x.date||null};});
-    out.filter(x=>x.sel&&x.cat).forEach(x=>{d.expenses.push({id:"e"+Date.now()+Math.random().toString(36).slice(2,6),month:x.mo,desc:x.desc,amount:x.amt,cat:x.cat});});
+    if(showInc)inc.filter(x=>x.sel&&x.memberId&&x.date).forEach(x=>{
+      const mo=x.date.slice(0,7);
+      if(!d.months.includes(mo)){d.months.push(mo);d.months.sort();}
+      const k=`${x.memberId}|${mo}`;const e=d.ledger[k]||{};
+      d.ledger[k]={...e,paid:true,req:e.req!=null?e.req:Math.round(x.amt),date:x.date};
+    });
+    if(showOut)out.filter(x=>x.sel&&x.cat&&x.date).forEach(x=>{
+      d.expenses.push({id:"e"+Date.now()+Math.random().toString(36).slice(2,6),month:x.date.slice(0,7),desc:x.desc,amount:x.amt,cat:x.cat});
+    });
   });onClose();};
 
   return (<div className="jc-overlay" onClick={onClose}><div className="jc-import" onClick={e=>e.stopPropagation()}>
     <div className="jc-sheethead"><div><div className="jc-sheetname">Bankafschrift importeren</div><div className="jc-sheetsub">CSV van ING, ABN AMRO, Rabobank e.a.</div></div><button className="jc-x" onClick={onClose}>✕</button></div>
+    <div className="jc-kindrow">
+      <button type="button" className={"jc-toggle"+(kind==="beide"?" on":"")} onClick={()=>setKind("beide")}>Beide</button>
+      <button type="button" className={"jc-toggle"+(kind==="inkomsten"?" on":"")} onClick={()=>setKind("inkomsten")}>Alleen inkomsten</button>
+      <button type="button" className={"jc-toggle"+(kind==="uitgaves"?" on":"")} onClick={()=>setKind("uitgaves")}>Alleen uitgaves</button>
+    </div>
     {step==="upload"&&<div className="jc-importbody">
       <p className="jc-sub">Upload een CSV-export van jullie rekening. De app herkent inkomende betalingen (wie heeft betaald) en uitgaves, en vraagt om een categorie als die onduidelijk is. Bestaande bedragen die al kloppen worden niet dubbel toegevoegd.</p>
       <label className="jc-filebtn">Kies CSV-bestand<input type="file" accept=".csv,text/csv" onChange={onFile} style={{display:"none"}}/></label>
@@ -541,31 +579,35 @@ function ImportModal({data,update,onClose}){
     </div>}
     {step==="review"&&<div className="jc-importbody scroll">
       {err&&<p className="jc-pinerr">{err}</p>}
-      <h4 className="jc-imh">Inkomsten — wie heeft betaald ({inc.filter(x=>x.sel).length}/{inc.length})</h4>
-      {inc.length===0&&<p className="jc-empty">Geen inkomende transacties gevonden.</p>}
-      {inc.map(x=>(<div key={x.id} className={"jc-imrow"+(x.dup?" dup":"")+(x.sel&&!x.date?" warn":"")}>
-        <input type="checkbox" checked={x.sel} onChange={e=>setI(x.id,"sel",e.target.checked)}/>
-        <span className="jc-imname" title={x.name}>{x.name||"—"}</span>
-        <select value={x.memberId} onChange={e=>setI(x.id,"memberId",e.target.value)}><option value="">— kies lid —</option>{data.members.map(m=><option key={m.id} value={m.id}>{m.short}</option>)}</select>
-        <select value={x.mo} onChange={e=>setI(x.id,"mo",e.target.value)}>{data.months.map(mo=><option key={mo} value={mo}>{mLabel(mo)}</option>)}</select>
-        <input className={"jc-imdate"+(!x.date?" need":"")} type="date" value={x.date||""} onChange={e=>setI(x.id,"date",e.target.value)}/>
-        <span className="jc-imamt sahel">{eur0(x.amt)}</span>{x.dup&&<span className="jc-dupbadge">al betaald</span>}
-      </div>))}
-      <h4 className="jc-imh">Uitgaves ({out.filter(x=>x.sel).length}/{out.length})</h4>
-      {out.length===0&&<p className="jc-empty">Geen uitgaande transacties gevonden.</p>}
-      {out.map(x=>(<div key={x.id} className={"jc-imrow"+(x.dup?" dup":"")+(x.sel&&!x.cat?" warn":"")}>
-        <input type="checkbox" checked={x.sel} onChange={e=>setO(x.id,"sel",e.target.checked)}/>
-        <input className="jc-imdesc" value={x.desc} onChange={e=>setO(x.id,"desc",e.target.value)}/>
-        <select value={x.mo} onChange={e=>setO(x.id,"mo",e.target.value)}>{data.months.map(mo=><option key={mo} value={mo}>{mLabel(mo)}</option>)}</select>
-        <select className={!x.cat?"need":""} value={x.cat} onChange={e=>{if(e.target.value==="__new"){setNewCatFor(x.id);}else setO(x.id,"cat",e.target.value);}}><option value="">categorie?</option>{cats.map(c=><option key={c.name}>{c.name}</option>)}<option value="__new">+ nieuwe categorie…</option></select>
-        <span className="jc-imamt clay">{eur0(x.amt)}</span>{x.dup&&<span className="jc-dupbadge">mogelijk dubbel</span>}
-      </div>))}
+      {showInc&&<>
+        <h4 className="jc-imh">Inkomsten — wie heeft betaald ({inc.filter(x=>x.sel).length}/{inc.length})</h4>
+        {inc.length===0&&<p className="jc-empty">Geen inkomende transacties gevonden.</p>}
+        {inc.map(x=>{const dup=rowIncDup(x);return(<div key={x.id} className={"jc-imrow"+(dup?" dup":"")+(x.sel&&!x.date?" warn":"")}>
+          <input type="checkbox" checked={x.sel} onChange={e=>setI(x.id,"sel",e.target.checked)}/>
+          <span className="jc-imname" title={x.name}>{x.name||"—"}</span>
+          <select value={x.memberId} onChange={e=>setI(x.id,"memberId",e.target.value)}><option value="">— kies lid —</option>{data.members.map(m=><option key={m.id} value={m.id}>{m.short}</option>)}</select>
+          <input className={"jc-imdate"+(!x.date?" need":"")} type="date" value={x.date||""} onChange={e=>setI(x.id,"date",e.target.value||null)}/>
+          <span className="jc-imamt sahel">{eur0(x.amt)}</span>{dup&&<span className="jc-dupbadge">al betaald</span>}
+        </div>);})}
+      </>}
+      {showOut&&<>
+        <h4 className="jc-imh">Uitgaves ({out.filter(x=>x.sel).length}/{out.length})</h4>
+        {out.length===0&&<p className="jc-empty">Geen uitgaande transacties gevonden.</p>}
+        {out.map(x=>{const dup=rowOutDup(x);return(<div key={x.id} className={"jc-imrow"+(dup?" dup":"")+(x.sel&&!x.cat?" warn":"")}>
+          <input type="checkbox" checked={x.sel} onChange={e=>setO(x.id,"sel",e.target.checked)}/>
+          <input className="jc-imdesc" value={x.desc} onChange={e=>setO(x.id,"desc",e.target.value)}/>
+          <input className={"jc-imdate"+(!x.date?" need":"")} type="date" value={x.date||""} onChange={e=>setO(x.id,"date",e.target.value||null)}/>
+          <select className={!x.cat?"need":""} value={x.cat} onChange={e=>{if(e.target.value==="__new"){setNewCatFor(x.id);}else setO(x.id,"cat",e.target.value);}}><option value="">categorie?</option>{cats.map(c=><option key={c.name}>{c.name}</option>)}<option value="__new">+ nieuwe categorie…</option></select>
+          <span className="jc-imamt clay">{eur0(x.amt)}</span>{dup&&<span className="jc-dupbadge">mogelijk dubbel</span>}
+        </div>);})}
+      </>}
       {newCatFor&&<div className="jc-newcat"><input placeholder="categorienaam" autoFocus value={catName} onChange={e=>setCatName(e.target.value)}/><input type="color" value={catColor2} onChange={e=>setCatColor2(e.target.value)}/><button className="jc-save-btn" onClick={addCat}>opslaan</button><button className="jc-ghost" onClick={()=>{setNewCatFor(null);setCatName("");}}>annuleren</button></div>}
     </div>}
     {step==="review"&&<div className="jc-importfoot">
       {needCat.length>0&&<span className="jc-needcat">{needCat.length} uitgave(s) hebben nog een categorie nodig</span>}
+      {needDate.length>0&&<span className="jc-needcat">{needDate.length} transactie(s) hebben nog een geldige datum nodig</span>}
       <button className="jc-ghost" onClick={onClose}>Annuleren</button>
-      <button className="jc-primary" disabled={needCat.length>0} onClick={apply}>Toepassen</button>
+      <button className="jc-primary" disabled={needCat.length>0||needDate.length>0} onClick={apply}>Toepassen</button>
     </div>}
   </div></div>);
 }

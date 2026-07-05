@@ -30,3 +30,6 @@ dist-ssr
 data.csv
 backups
 Data betalingen.txt
+
+.vercel
+.env*
