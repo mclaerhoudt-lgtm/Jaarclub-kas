@@ -92,11 +92,39 @@ export async function loadAll() {
 // client-state (delete-all + insert-all). Voor een club van 16 leden is dit
 // ruim snel genoeg en veel eenvoudiger/betrouwbaarder dan per-rij diffen.
 async function syncCollection(table, idCol, rows) {
-  const del = await supabase.from(table).delete().not(idCol, "is", null);
+  if (rows.length === 0) {
+    const del = await supabase.from(table).delete().not(idCol, "is", null);
+    if (del.error) throw del.error;
+    return;
+  }
+  // Upsert eerst: bestaande rijen updaten, nieuwe rijen toevoegen.
+  // Pas daarna orphans verwijderen — zo gaat bij een mislukte write nooit data verloren.
+  const ups = await supabase.from(table).upsert(rows, { onConflict: idCol });
+  if (ups.error) throw ups.error;
+  const ids = rows.map((r) => r[idCol]);
+  const del = await supabase.from(table).delete().not(idCol, "in", `(${ids.join(",")})`);
   if (del.error) throw del.error;
-  if (rows.length === 0) return;
-  const ins = await supabase.from(table).insert(rows);
-  if (ins.error) throw ins.error;
+}
+
+// ledger heeft een samengestelde sleutel (member_id, month) — geen los idCol zoals
+// syncCollection verwacht, dus een eigen upsert/orphan-cleanup met dat sleutelpaar.
+async function syncLedger(rows) {
+  if (rows.length === 0) {
+    const del = await supabase.from("ledger").delete().not("member_id", "is", null);
+    if (del.error) throw del.error;
+    return;
+  }
+  const ups = await supabase.from("ledger").upsert(rows, { onConflict: "member_id,month" });
+  if (ups.error) throw ups.error;
+  const existing = await supabase.from("ledger").select("member_id,month");
+  if (existing.error) throw existing.error;
+  const keep = new Set(rows.map((r) => `${r.member_id}|${r.month}`));
+  const orphans = existing.data.filter((r) => !keep.has(`${r.member_id}|${r.month}`));
+  if (orphans.length) {
+    const del = await supabase.from("ledger").delete()
+      .or(orphans.map((o) => `and(member_id.eq.${o.member_id},month.eq.${o.month})`).join(","));
+    if (del.error) throw del.error;
+  }
 }
 
 export async function saveAll(data) {
@@ -144,7 +172,7 @@ export async function saveAll(data) {
   step1.forEach(check);
 
   const step2 = await Promise.all([
-    syncCollection("ledger", "member_id", Object.entries(data.ledger).map(([k, v]) => {
+    syncLedger(Object.entries(data.ledger).map(([k, v]) => {
       const [member_id, month] = k.split("|");
       return { member_id, month, req: v.req, paid: v.paid, date: v.date };
     })),

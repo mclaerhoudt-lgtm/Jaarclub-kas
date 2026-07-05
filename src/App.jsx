@@ -167,6 +167,26 @@ function normalizeData(d){
   return d;
 }
 
+// ───────────── opslaan & backup ─────────────
+const LS_BACKUP_KEY="jaarclub-kas:auto-backup";
+function isSavable(d){
+  return !!d && Array.isArray(d.members) && d.members.length>0
+    && Array.isArray(d.months) && !!d.ledger && typeof d.ledger==="object"
+    && Array.isArray(d.expenses) && Array.isArray(d.categories)
+    && !!d.accounts && typeof d.accounts==="object";
+}
+const isValidBackup=isSavable;
+function writeLocalBackup(d){ try{ localStorage.setItem(LS_BACKUP_KEY,JSON.stringify({savedAt:new Date().toISOString(),data:d})); }catch{/* quotum vol o.i.d. — geen probleem, dit is alleen het lokale vangnet */} }
+function readLocalBackup(){ try{ const raw=localStorage.getItem(LS_BACKUP_KEY); if(!raw)return null; const p=JSON.parse(raw); return isValidBackup(p.data)?p:null; }catch{ return null; } }
+function downloadBackup(d){
+  const blob=new Blob([JSON.stringify(d,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=`jaarclub-kas-backup-${TODAY}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function fmtTime(d){ return d?d.toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"}):""; }
+
 // ───────────── error boundary ─────────────
 class EB extends Component{ constructor(p){super(p);this.state={err:null};} static getDerivedStateFromError(e){return{err:e};}
   render(){ if(this.state.err) return <div className="jc-card" style={{margin:"4px 0"}}><b className="clay">Er ging iets mis bij het tonen.</b><pre style={{whiteSpace:"pre-wrap",fontSize:11,color:"#6b5436"}}>{String(this.state.err.message||this.state.err)}</pre></div>; return this.props.children; } }
@@ -181,6 +201,9 @@ export default function App(){
   const loaded=useRef(false);
   const dirty=useRef(false);
   const [saving,setSaving]=useState(false);
+  const [lastSavedAt,setLastSavedAt]=useState(null);
+  const [saveErr,setSaveErr]=useState(null);
+  const [justSaved,setJustSaved]=useState(false);
   const edit=role==="pm";
 
   useEffect(()=>{(async()=>{
@@ -188,17 +211,41 @@ export default function App(){
     catch(e){ setLoadError(e.message||String(e)); }
   })();},[]);
 
+  // Centrale opslaan-functie: auto-save en de expliciete knop lopen hier allebei doorheen,
+  // zodat een kapotte/lege state nooit een goede opslag overschrijft en er na elke geslaagde
+  // opslag een lokale reservekopie (vorige goede staat) klaarstaat.
+  const doSave=async(current)=>{
+    if(!isSavable(current)){ setSaveErr("data lijkt ongeldig — niet opgeslagen"); return false; }
+    setSaving(true);
+    try{
+      await saveAll(current);
+      setLastSavedAt(new Date());
+      writeLocalBackup(current);
+      setSaveErr(null);
+      return true;
+    }catch(e){
+      console.error("Opslaan naar Supabase mislukt:",e);
+      setSaveErr("opslaan mislukt");
+      return false;
+    }finally{
+      setSaving(false);
+    }
+  };
+
   useEffect(()=>{
     if(!loaded.current||!data||!dirty.current)return;
-    setSaving(true);
-    const t=setTimeout(async()=>{
-      try{ await saveAll(data); } catch(e){ console.error("Opslaan naar Supabase mislukt:",e); }
-      setSaving(false);
-    },400);
+    const t=setTimeout(()=>{ doSave(data); },400);
     return()=>clearTimeout(t);
   },[data]);
 
+  const saveNow=async()=>{
+    if(!data)return;
+    const ok=await doSave(data);
+    if(ok){ setJustSaved(true); setTimeout(()=>setJustSaved(false),2200); }
+  };
+
   const update=(fn)=>{ if(role!=="pm")return; dirty.current=true; setData(prev=>{const n=structuredClone(prev);fn(n);n.lastUpdated=TODAY;return n;}); };
+  const markDirty=()=>{ dirty.current=true; };
 
   if(loadError) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#b5532a"}}>Kon de kas niet laden: {loadError}</div>;
   if(!data) return <div style={{padding:40,fontFamily:"Inter,sans-serif",color:"#6b5436"}}>Kas laden…</div>;
@@ -208,7 +255,7 @@ export default function App(){
 
   return (
     <div className="jc-root">
-      <Header data={data} saving={saving} role={role} onPm={()=>setPinOpen(true)} onView={()=>{setRole("viewer");if(tab==="beheer")setTab("overzicht");}}/>
+      <Header data={data} saving={saving} role={role} edit={edit} lastSavedAt={lastSavedAt} justSaved={justSaved} saveErr={saveErr} onSave={saveNow} onPm={()=>setPinOpen(true)} onView={()=>{setRole("viewer");if(tab==="beheer")setTab("overzicht");}}/>
       <div className="jc-bogolan"/>
       <nav className="jc-tabs">{TABS.map(([k,l])=><button key={k} className={"jc-tab"+(tab===k?" on":"")} onClick={()=>setTab(k)}>{l}</button>)}</nav>
       <main className="jc-main"><EB key={tab}>
@@ -218,7 +265,7 @@ export default function App(){
         {tab==="uitgaves"   && <Uitgaves data={data} update={update} edit={edit}/>}
         {tab==="lustrum"    && <Lustrum data={data} update={update} edit={edit}/>}
         {tab==="prognose"   && <Prognose data={data} update={update} edit={edit}/>}
-        {tab==="beheer" && edit && <Beheer data={data} update={update} setData={setData}/>}
+        {tab==="beheer" && edit && <Beheer data={data} update={update} setData={setData} markDirty={markDirty}/>}
       </EB></main>
       <footer className="jc-foot">Gedeelde kas · iedereen met deze app ziet dezelfde gegevens · {data.iban}</footer>
       {pinOpen && <PinModal correct={data.pmPin} onClose={()=>setPinOpen(false)} onOk={()=>{setRole("pm");setPinOpen(false);}}/>}
@@ -238,14 +285,16 @@ function PinModal({correct,onOk,onClose}){
 }
 
 // ───────────── header ─────────────
-function Header({data,saving,role,onPm,onView}){
+function Header({data,saving,role,edit,lastSavedAt,justSaved,saveErr,onSave,onPm,onView}){
   const saldo=data.accounts.betaalrekening;
   return (<header className="jc-header">
     <div className="jc-headtop"><div className="jc-brand"><span className="jc-diamond"/><div>
       <div className="jc-gname">{data.groupName}</div>
       <div className="jc-gsub">Laatst bijgewerkt {dmy(data.lastUpdated)}{data.lastUpdatedBy?` · ${data.lastUpdatedBy}`:""}</div>
     </div></div><div className="jc-headright">
-      <span className={"jc-save"+(saving?" busy":"")}>{saving?"opslaan…":"opgeslagen"}</span>
+      {edit && <button className="jc-savebtn" onClick={onSave} disabled={saving}>{justSaved?"✓ opgeslagen":"Opslaan"}</button>}
+      <span className={"jc-save"+(saving?" busy":"")}>{saving?"opslaan…":lastSavedAt?`opgeslagen ${fmtTime(lastSavedAt)}`:"opgeslagen"}</span>
+      {saveErr && <span className="jc-saveerr" title={saveErr}>⚠ {saveErr}</span>}
       {role==="pm"?<button className="jc-rolebtn pm" onClick={onView}>● Penningmeester</button>:<button className="jc-rolebtn" onClick={onPm}>Kijkmodus · ontgrendel</button>}
     </div></div>
     <div className="jc-balance"><div className="jc-balmain"><span className="jc-ballabel">Saldo betaalrekening</span><span className="jc-balnum">{eur0(saldo)}</span></div>
@@ -900,14 +949,36 @@ function MaandPaneel({row,onClose}){
 function Mini({label,val,light}){return<div className={"jc-minicalc"+(light?" light":"")}><span>{label}</span><b>{val}</b></div>;}
 
 // ───────────── beheer ─────────────
-function Beheer({data,update,setData}){
+function Beheer({data,update,setData,markDirty}){
   const [confirmReset,setConfirmReset]=useState(false);const [importing,setImporting]=useState(false);
+  const [restoreErr,setRestoreErr]=useState(null);
+  const [restorePending,setRestorePending]=useState(null);
+  const [restoreSource,setRestoreSource]=useState(null);
+  const fileRef=useRef(null);
+  const localBackup=readLocalBackup();
   const setField=(k,v)=>update(d=>{d[k]=v;});const setAcc=(k,v)=>update(d=>{d.accounts[k]=Number(v)||0;});
   const setMember=(id,k,v)=>update(d=>{const m=d.members.find(x=>x.id===id);m[k]=k==="rate"?(Number(v)||0):v;});
   const delMember=(id)=>update(d=>{d.members=d.members.filter(m=>m.id!==id);});
   const addMember=()=>update(d=>{d.members.push({id:"m"+Date.now(),name:"Nieuw lid",short:"Nieuw",type:"fulltime",rate:270,color:"#9c6b3f",saved:0,target:d.lustrumTarget||3000});});
   const setCat=(i,k,v)=>update(d=>{d.categories[i][k]=v;});const delCat=(i)=>update(d=>{d.categories.splice(i,1);});const addCat=()=>update(d=>{(d.categories=d.categories||[]).push({name:"Nieuw",color:"#9c6b3f"});});
-  const reset=()=>{const n=structuredClone(SEED);n.lastUpdated=TODAY;setData(n);setConfirmReset(false);};
+  const reset=()=>{const n=structuredClone(SEED);n.lastUpdated=TODAY;setData(n);markDirty?.();setConfirmReset(false);};
+  const onBackupFile=(e)=>{
+    const f=e.target.files?.[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=()=>{
+      let parsed;
+      try{ parsed=JSON.parse(r.result); }
+      catch{ setRestoreErr("Dit bestand kon niet gelezen worden als JSON."); return; }
+      if(!isValidBackup(parsed)){ setRestoreErr("Dit lijkt geen geldig back-upbestand — verplichte gegevens ontbreken."); return; }
+      setRestoreErr(null);setRestoreSource("file");setRestorePending(parsed);
+    };
+    r.onerror=()=>setRestoreErr("Kon het bestand niet lezen.");
+    r.readAsText(f);
+    e.target.value="";
+  };
+  const restoreFromLocal=()=>{ if(!localBackup)return; setRestoreErr(null);setRestoreSource("auto");setRestorePending(localBackup.data); };
+  const confirmRestore=()=>{ setData(normalizeData(structuredClone(restorePending)));markDirty?.();setRestorePending(null);setRestoreSource(null); };
+  const cancelRestore=()=>{ setRestorePending(null);setRestoreSource(null); };
   return (<div className="jc-grid">
     <div className="jc-card"><h3 className="jc-h">Algemeen</h3>
       <Field label="Groepsnaam"><input value={data.groupName} onChange={e=>setField("groupName",e.target.value)}/></Field>
@@ -928,10 +999,28 @@ function Beheer({data,update,setData}){
     <div className="jc-card jc-nopad"><div className="jc-cardhead pad"><h3>Leden & tarieven</h3><button className="jc-addbtn" onClick={addMember}>+ lid</button></div>
       <div className="jc-memlist">{data.members.map(m=>(<div key={m.id} className="jc-memrow"><span className="jc-av sm" style={{background:m.color}}>{m.short[0]}</span><input className="jc-memname" value={m.name} onChange={e=>setMember(m.id,"name",e.target.value)}/><input className="jc-memshort" value={m.short} onChange={e=>setMember(m.id,"short",e.target.value)}/><input className="jc-memrate" type="number" value={m.rate} onChange={e=>setMember(m.id,"rate",e.target.value)}/><button className="jc-del" onClick={()=>delMember(m.id)}>✕</button></div>))}</div>
     </div>
+    <div className="jc-card"><h3 className="jc-h">Backup</h3>
+      <p className="jc-sub" style={{marginBottom:10}}>Download regelmatig een backup — dat bestand blijft bewaard, ook als de app crasht of onbereikbaar is.</p>
+      <div className="jc-confirmrow" style={{marginBottom:8}}>
+        <button className="jc-addbtn ghost" onClick={()=>downloadBackup(data)}>⬇ Backup downloaden</button>
+        <button className="jc-addbtn ghost" onClick={()=>fileRef.current?.click()}>⬆ Backup laden</button>
+        <input ref={fileRef} type="file" accept="application/json,.json" style={{display:"none"}} onChange={onBackupFile}/>
+      </div>
+      {restoreErr && <p className="jc-saveerr" style={{marginBottom:8}}>{restoreErr}</p>}
+      <p className="jc-hint">Automatische reservekopie op dit apparaat: {localBackup?`bijgewerkt ${fmtTime(new Date(localBackup.savedAt))} op ${dmy(localBackup.savedAt.slice(0,10))}`:"nog geen"}
+        {localBackup && <button type="button" className="jc-mini" style={{marginLeft:8}} onClick={restoreFromLocal}>terugzetten</button>}
+      </p>
+    </div>
     <div className="jc-card"><h3 className="jc-h">Data</h3><p className="jc-sub">Begonnen met jullie spreadsheet-data van april 2026. Wijzigingen worden gedeeld met iedereen.</p>
       {confirmReset?<div className="jc-confirmrow"><span>Zeker weten? Alle wijzigingen gaan verloren.</span><button className="jc-ghost" onClick={()=>setConfirmReset(false)}>nee</button><button className="jc-reset" onClick={reset}>ja, reset</button></div>:<button className="jc-reset" onClick={()=>setConfirmReset(true)}>Terug naar oorspronkelijke data</button>}
     </div>
     {importing&&<ImportModal data={data} update={update} onClose={()=>setImporting(false)}/>}
+    {restorePending&&<div className="jc-overlay" onClick={cancelRestore}><div className="jc-pin" onClick={e=>e.stopPropagation()}>
+      <div className="jc-pintitle">Backup terugzetten?</div>
+      <p className="jc-pinsub">{restoreSource==="auto"?"Dit zet de automatische reservekopie van dit apparaat terug en overschrijft de huidige data voor iedereen.":"Dit overschrijft de huidige data voor iedereen met de inhoud van dit bestand."} Dit kan niet ongedaan worden gemaakt.</p>
+      <p className="jc-hint">{restorePending.members?.length||0} leden · laatst bijgewerkt {restorePending.lastUpdated?dmy(restorePending.lastUpdated):"onbekend"}</p>
+      <div className="jc-pinrow"><button className="jc-ghost" onClick={cancelRestore}>annuleren</button><button className="jc-primary" onClick={confirmRestore}>ja, terugzetten</button></div>
+    </div></div>}
   </div>);
 }
 function Field({label,children}){return<label className="jc-field"><span>{label}</span>{children}</label>;}

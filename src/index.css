@@ -14,6 +14,9 @@ html,body{margin:0;overflow-x:hidden;max-width:100%;}
 .jc-gsub{font-size:11.5px;color:#bfb08c;margin-top:1px;}
 .jc-headright{display:flex;align-items:center;gap:12px;}
 .jc-save{font-size:11px;color:#9aae7e;font-family:'Space Mono';}.jc-save.busy{color:#e0b25c;}
+.jc-savebtn{background:var(--sahel);border:none;color:#132b0d;border-radius:20px;padding:6px 13px;font-size:12px;cursor:pointer;font-weight:600;}
+.jc-savebtn:hover{filter:brightness(1.08);}.jc-savebtn:disabled{opacity:.6;cursor:default;}
+.jc-saveerr{font-size:11px;color:#e69173;font-family:'Space Mono';}
 .jc-rolebtn{background:rgba(255,255,255,.08);border:1px solid rgba(241,232,210,.25);color:#e9dcbb;border-radius:20px;padding:6px 13px;font-size:12px;cursor:pointer;}
 .jc-rolebtn:hover{background:rgba(255,255,255,.14);}.jc-rolebtn.pm{background:var(--ochre);border-color:var(--ochre);color:#2e2114;font-weight:600;}
 .jc-balance{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;flex-wrap:wrap;}
