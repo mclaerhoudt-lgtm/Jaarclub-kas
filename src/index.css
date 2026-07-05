@@ -126,9 +126,10 @@ tr.warnrow:hover{background:#f7e2cf;}
 .jc-importbody{padding:16px;overflow-y:auto;}.jc-importbody.scroll{flex:1;}
 .jc-filebtn{display:inline-block;background:var(--indigo);color:#f1e8d2;padding:11px 16px;border-radius:10px;cursor:pointer;font-size:13.5px;margin-top:10px;}
 .jc-imh{font-family:'Fraunces',serif;font-size:13px;margin:14px 0 8px;color:var(--espresso);}
-.jc-imrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #ece0c4;font-size:12px;}
+.jc-imrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #ece0c4;font-size:12px;flex-wrap:wrap;}
 .jc-imrow.dup{opacity:.6;}.jc-imrow.warn{background:#fbeede;}
 .jc-imrow select,.jc-imdesc{padding:5px 7px;border:1px solid var(--line);border-radius:7px;font-size:12px;font-family:inherit;background:#fff;}
+.jc-immonth{width:112px;}
 .jc-imname{flex:1;min-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .jc-imdesc{flex:1;min-width:70px;}
 .jc-imamt{font-family:'Space Mono';font-weight:700;width:64px;text-align:right;}

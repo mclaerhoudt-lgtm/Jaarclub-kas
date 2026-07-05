@@ -531,8 +531,9 @@ function ImportModal({data,update,onClose}){
       rows.forEach((row,idx)=>{
         if(row.amt>0){
           const m=matchMember(row.name,data.members);
-          const dup=m&&row.date?isPaid(data,m.id,row.date.slice(0,7)):false;
-          incoming.push({id:"i"+idx,name:row.name,amt:row.amt,date:row.date,memberId:m?m.id:"",sel:!!m&&!!row.date&&!dup});
+          const mo=row.date?row.date.slice(0,7):null;
+          const dup=m&&mo?isPaid(data,m.id,mo):false;
+          incoming.push({id:"i"+idx,name:row.name,amt:row.amt,date:row.date,mo,memberId:m?m.id:"",sel:!!m&&!!row.date&&!dup});
         }else if(row.amt<0){
           const amount=Math.abs(row.amt);
           const dup=row.date?data.expenses.some(x=>x.month===row.date.slice(0,7)&&Math.abs(x.amount-amount)<0.02):false;
@@ -546,18 +547,20 @@ function ImportModal({data,update,onClose}){
 
   const setI=(id,k,v)=>setInc(a=>a.map(x=>x.id===id?{...x,[k]:v}:x));
   const setO=(id,k,v)=>setOut(a=>a.map(x=>x.id===id?{...x,[k]:v}:x));
-  const rowIncDup=(x)=>x.memberId&&x.date?isPaid(data,x.memberId,x.date.slice(0,7)):false;
+  const rowIncDup=(x)=>x.memberId&&x.mo?isPaid(data,x.memberId,x.mo):false;
   const rowOutDup=(x)=>x.date?data.expenses.some(e=>e.month===x.date.slice(0,7)&&Math.abs(e.amount-x.amt)<0.02):false;
   const showInc=kind!=="uitgaves",showOut=kind!=="inkomsten";
   const needCat=showOut?out.filter(o=>o.sel&&!o.cat):[];
   const needDate=[...(showInc?inc:[]),...(showOut?out:[])].filter(x=>x.sel&&!x.date);
+  const monthOptions=useMemo(()=>Array.from({length:49},(_,i)=>addMonth(addMonth(NOW,-24),i)),[]);
+  const optsFor=(mo)=>mo&&!monthOptions.includes(mo)?[mo,...monthOptions]:monthOptions;
+  const earlySuggestion=(x)=>{if(!x.date||!x.mo)return null;const day=Number(x.date.slice(8,10));const dateMo=x.date.slice(0,7);if(day>5||x.mo!==dateMo)return null;return addMonth(dateMo,-1);};
   const addCat=()=>{const name=catName.trim();if(!name)return;update(d=>{(d.categories=d.categories||[]).push({name,color:catColor2});});if(newCatFor)setO(newCatFor,"cat",name);setCatName("");setNewCatFor(null);};
 
   const apply=()=>{update(d=>{
-    if(showInc)inc.filter(x=>x.sel&&x.memberId&&x.date).forEach(x=>{
-      const mo=x.date.slice(0,7);
-      if(!d.months.includes(mo)){d.months.push(mo);d.months.sort();}
-      const k=`${x.memberId}|${mo}`;const e=d.ledger[k]||{};
+    if(showInc)inc.filter(x=>x.sel&&x.memberId&&x.date&&x.mo).forEach(x=>{
+      if(!d.months.includes(x.mo)){d.months.push(x.mo);d.months.sort();}
+      const k=`${x.memberId}|${x.mo}`;const e=d.ledger[k]||{};
       d.ledger[k]={...e,paid:true,req:e.req!=null?e.req:Math.round(x.amt),date:x.date};
     });
     if(showOut)out.filter(x=>x.sel&&x.cat&&x.date).forEach(x=>{
@@ -581,12 +584,15 @@ function ImportModal({data,update,onClose}){
       {err&&<p className="jc-pinerr">{err}</p>}
       {showInc&&<>
         <h4 className="jc-imh">Inkomsten — wie heeft betaald ({inc.filter(x=>x.sel).length}/{inc.length})</h4>
+        <p className="jc-hint" style={{margin:"-4px 0 6px"}}>Betaaldatum = wanneer echt betaald. "Telt voor" = het maandvakje in het betaaloverzicht — pas aan als iemand bv. begin juni zijn mei-bijdrage betaalde.</p>
         {inc.length===0&&<p className="jc-empty">Geen inkomende transacties gevonden.</p>}
-        {inc.map(x=>{const dup=rowIncDup(x);return(<div key={x.id} className={"jc-imrow"+(dup?" dup":"")+(x.sel&&!x.date?" warn":"")}>
+        {inc.map(x=>{const dup=rowIncDup(x);const suggest=earlySuggestion(x);return(<div key={x.id} className={"jc-imrow"+(dup?" dup":"")+(x.sel&&!x.date?" warn":"")}>
           <input type="checkbox" checked={x.sel} onChange={e=>setI(x.id,"sel",e.target.checked)}/>
           <span className="jc-imname" title={x.name}>{x.name||"—"}</span>
           <select value={x.memberId} onChange={e=>setI(x.id,"memberId",e.target.value)}><option value="">— kies lid —</option>{data.members.map(m=><option key={m.id} value={m.id}>{m.short}</option>)}</select>
-          <input className={"jc-imdate"+(!x.date?" need":"")} type="date" value={x.date||""} onChange={e=>setI(x.id,"date",e.target.value||null)}/>
+          <input className={"jc-imdate"+(!x.date?" need":"")} type="date" title="betaaldatum" value={x.date||""} onChange={e=>setI(x.id,"date",e.target.value||null)}/>
+          <select className="jc-immonth" title="telt voor maand" value={x.mo||""} onChange={e=>setI(x.id,"mo",e.target.value)}>{optsFor(x.mo).map(mo=><option key={mo} value={mo}>{mLabel(mo,true)}</option>)}</select>
+          {suggest&&<button type="button" className="jc-mini" onClick={()=>setI(x.id,"mo",suggest)}>vroeg — {mLabel(suggest)}?</button>}
           <span className="jc-imamt sahel">{eur0(x.amt)}</span>{dup&&<span className="jc-dupbadge">al betaald</span>}
         </div>);})}
       </>}
