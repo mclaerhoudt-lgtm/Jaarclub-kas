@@ -78,9 +78,13 @@ create table if not exists members (
   type text not null default 'fulltime',
   rate numeric not null default 0,
   color text not null default '#9c6b3f',
-  saved numeric not null default 0,
+  lustrum_start numeric not null default 0,   -- lustrum-beginsaldo (vóór maandelijkse tracking); heette eerder "saved"
   target numeric not null default 3000
 );
+do $$ begin
+  alter table members rename column saved to lustrum_start;
+exception when undefined_column then null;
+end $$;
 
 -- ───────────── betaalrooster ─────────────
 create table if not exists months (
@@ -93,6 +97,15 @@ create table if not exists ledger (
   req numeric,
   paid boolean not null default false,
   date date,
+  primary key (member_id, month)
+);
+
+-- ───────────── lustrum: inleg per lid per maand ─────────────
+-- Totaal gespaard = members.lustrum_start (beginsaldo) + som van deze tabel.
+create table if not exists lustrum_ledger (
+  member_id text not null references members(id) on delete cascade,
+  month text not null references months(month) on delete cascade,
+  amount numeric not null default 0,
   primary key (member_id, month)
 );
 
@@ -193,7 +206,7 @@ declare
   t text;
 begin
   for t in select unnest(array[
-    'profiles','club','members','months','ledger','categories','expenses','income',
+    'profiles','club','members','months','ledger','lustrum_ledger','categories','expenses','income',
     'accounts','forecast_config','forecast_buckets','forecast_one_offs',
     'forecast_vakantie','forecast_boeking_betalingen'
   ])

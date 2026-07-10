@@ -5,13 +5,14 @@ import { supabase } from "./supabase.js";
 // niet aangepast hoeven te worden, alleen de laag die data ophaalt/opslaat.
 export async function loadAll() {
   const [
-    club, members, months, ledger, categories, expenses, income, accounts,
+    club, members, months, ledger, lustrumLedger, categories, expenses, income, accounts,
     forecastConfig, buckets, oneOffs, vakantie, betalingen,
   ] = await Promise.all([
     supabase.from("club").select("*").eq("id", 1).single(),
     supabase.from("members").select("*"),
     supabase.from("months").select("*"),
     supabase.from("ledger").select("*"),
+    supabase.from("lustrum_ledger").select("*"),
     supabase.from("categories").select("*"),
     supabase.from("expenses").select("*"),
     supabase.from("income").select("*"),
@@ -23,13 +24,17 @@ export async function loadAll() {
     supabase.from("forecast_boeking_betalingen").select("*"),
   ]);
 
-  for (const r of [club, members, months, ledger, categories, expenses, income, accounts, forecastConfig, buckets, oneOffs, vakantie, betalingen]) {
+  for (const r of [club, members, months, ledger, lustrumLedger, categories, expenses, income, accounts, forecastConfig, buckets, oneOffs, vakantie, betalingen]) {
     if (r.error) throw r.error;
   }
 
   const ledgerObj = {};
   ledger.data.forEach((r) => {
     ledgerObj[`${r.member_id}|${r.month}`] = { req: r.req, paid: r.paid, date: r.date };
+  });
+  const lustrumLedgerObj = {};
+  lustrumLedger.data.forEach((r) => {
+    lustrumLedgerObj[`${r.member_id}|${r.month}`] = r.amount;
   });
   const incomeObj = {};
   income.data.forEach((r) => { incomeObj[r.month] = r.amount; });
@@ -44,10 +49,11 @@ export async function loadAll() {
     lastUpdated: club.data.last_updated,
     lastUpdatedBy: club.data.last_updated_by,
     members: members.data.map((m) => ({
-      id: m.id, name: m.name, short: m.short, type: m.type, rate: m.rate, color: m.color, saved: m.saved, target: m.target,
+      id: m.id, name: m.name, short: m.short, type: m.type, rate: m.rate, color: m.color, lustrumStart: m.lustrum_start, target: m.target,
     })),
     months: months.data.map((r) => r.month).sort(),
     ledger: ledgerObj,
+    lustrumLedger: lustrumLedgerObj,
     expenses: expenses.data.map((e) => ({ id: e.id, month: e.month, desc: e.description, amount: e.amount, cat: e.cat })),
     income: incomeObj,
     categories: categories.data.map((c) => ({ name: c.name, color: c.color })),
@@ -106,22 +112,23 @@ async function syncCollection(table, idCol, rows) {
   if (del.error) throw del.error;
 }
 
-// ledger heeft een samengestelde sleutel (member_id, month) — geen los idCol zoals
-// syncCollection verwacht, dus een eigen upsert/orphan-cleanup met dat sleutelpaar.
-async function syncLedger(rows) {
+// ledger en lustrum_ledger hebben een samengestelde sleutel (member_id, month) —
+// geen los idCol zoals syncCollection verwacht, dus een eigen upsert/orphan-cleanup
+// met dat sleutelpaar. Gedeeld tussen beide tabellen, zelfde vorm.
+async function syncMemberMonthTable(table, rows) {
   if (rows.length === 0) {
-    const del = await supabase.from("ledger").delete().not("member_id", "is", null);
+    const del = await supabase.from(table).delete().not("member_id", "is", null);
     if (del.error) throw del.error;
     return;
   }
-  const ups = await supabase.from("ledger").upsert(rows, { onConflict: "member_id,month" });
+  const ups = await supabase.from(table).upsert(rows, { onConflict: "member_id,month" });
   if (ups.error) throw ups.error;
-  const existing = await supabase.from("ledger").select("member_id,month");
+  const existing = await supabase.from(table).select("member_id,month");
   if (existing.error) throw existing.error;
   const keep = new Set(rows.map((r) => `${r.member_id}|${r.month}`));
   const orphans = existing.data.filter((r) => !keep.has(`${r.member_id}|${r.month}`));
   if (orphans.length) {
-    const del = await supabase.from("ledger").delete()
+    const del = await supabase.from(table).delete()
       .or(orphans.map((o) => `and(member_id.eq.${o.member_id},month.eq.${o.month})`).join(","));
     if (del.error) throw del.error;
   }
@@ -162,7 +169,7 @@ export async function saveAll(data) {
       activiteiten_verwacht_bedrag: f.vakantie.activiteiten.verwachtBedrag,
     }).eq("id", 1),
     syncCollection("members", "id", data.members.map((m) => ({
-      id: m.id, name: m.name, short: m.short, type: m.type, rate: m.rate, color: m.color, saved: m.saved, target: m.target,
+      id: m.id, name: m.name, short: m.short, type: m.type, rate: m.rate, color: m.color, lustrum_start: m.lustrumStart, target: m.target,
     }))),
     syncCollection("months", "month", data.months.map((mo) => ({ month: mo }))),
     syncCollection("categories", "name", data.categories.map((c) => ({ name: c.name, color: c.color }))),
@@ -172,9 +179,13 @@ export async function saveAll(data) {
   step1.forEach(check);
 
   const step2 = await Promise.all([
-    syncLedger(Object.entries(data.ledger).map(([k, v]) => {
+    syncMemberMonthTable("ledger", Object.entries(data.ledger).map(([k, v]) => {
       const [member_id, month] = k.split("|");
       return { member_id, month, req: v.req, paid: v.paid, date: v.date };
+    })),
+    syncMemberMonthTable("lustrum_ledger", Object.entries(data.lustrumLedger).map(([k, amount]) => {
+      const [member_id, month] = k.split("|");
+      return { member_id, month, amount };
     })),
     syncCollection("expenses", "id", data.expenses.map((e) => ({ id: e.id, month: e.month, description: e.desc, amount: e.amount, cat: e.cat }))),
     syncCollection("forecast_buckets", "id", f.buckets.map((b) => ({
