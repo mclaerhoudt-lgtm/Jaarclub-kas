@@ -105,6 +105,9 @@ function dmy(iso){if(!iso)return "—";const[y,m,dd]=iso.split("-").map(Number);
 function dmShort(iso){if(!iso)return "";const[,m,dd]=iso.split("-").map(Number);return `${dd}-${m}`;}
 const NOW=(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;})();
 const TODAY=new Date().toISOString().slice(0,10);
+// Lustrum is een meerjarig spaardoel met een eigen, vaste maandreeks — los van
+// het rollende betaalrooster (data.months).
+const LUSTRUM_MONTHS=(()=>{const out=[];let k="2025-11";while(k<="2028-12"){out.push(k);k=addMonth(k,1);}return out;})();
 
 function cellReq(data,mid,month){const e=data.ledger[`${mid}|${month}`];if(e&&e.req!=null)return e.req;const m=data.members.find(x=>x.id===mid);return m?m.rate:0;}
 function isPaid(data,mid,month){const e=data.ledger[`${mid}|${month}`];return !!(e&&e.paid);}
@@ -343,7 +346,7 @@ function Betalingen({data,update,edit}){
   const vulLegeIn=()=>{update(d=>{d.members.forEach(m=>{months.forEach(mo=>{if(!hasEntry(d,m.id,mo)){const k=`${m.id}|${mo}`;d.ledger[k]={req:m.rate,paid:false};}});});});setConfirmLeeg(false);};
   const addMaand=()=>update(d=>{const last=[...d.months].sort().pop();const next=addMonth(last,1);if(!d.months.includes(next))d.months.push(next);d.months.sort();});
   const laatsteMaand=[...months].sort().pop();
-  const delMaand=()=>{update(d=>{const last=[...d.months].sort().pop();d.months=d.months.filter(mo=>mo!==last);Object.keys(d.ledger).forEach(k=>{if(k.endsWith(`|${last}`))delete d.ledger[k];});Object.keys(d.lustrumLedger).forEach(k=>{if(k.endsWith(`|${last}`))delete d.lustrumLedger[k];});});setConfirmDelMaand(false);};
+  const delMaand=()=>{update(d=>{const last=[...d.months].sort().pop();d.months=d.months.filter(mo=>mo!==last);Object.keys(d.ledger).forEach(k=>{if(k.endsWith(`|${last}`))delete d.ledger[k];});});setConfirmDelMaand(false);};
   return (<div className="jc-card jc-nopad">
     <div className="jc-cardhead pad"><h3>Betaaloverzicht</h3><span className="jc-hint">{edit?"tik een vakje om te bewerken · tik een naam voor overzicht":"alleen-lezen"}</span></div>
     {edit&&<div className="jc-importfoot" style={{borderTop:"none",borderBottom:"1px solid var(--line)",gap:8,flexWrap:"wrap"}}>
@@ -626,7 +629,7 @@ function monthsRemaining(from,to){if(!from||!to)return null;const[ay,am]=from.sp
 function lustrumTotal(data,mid){
   const m=data.members.find(x=>x.id===mid);
   const start=m?(m.lustrumStart||0):0;
-  return data.months.reduce((a,mo)=>a+(data.lustrumLedger[`${mid}|${mo}`]||0),0)+start;
+  return LUSTRUM_MONTHS.reduce((a,mo)=>a+(data.lustrumLedger[`${mid}|${mo}`]||0),0)+start;
 }
 function Lustrum({data,update,edit}){
   const [sel,setSel]=useState(null);
@@ -668,6 +671,7 @@ function Lustrum({data,update,edit}){
         {!einddatum&&<> · stel een einddatum in om het maandbedrag te zien</>}
       </p>
     </div>
+    <LustrumMaandtotaal data={data}/>
     <div className="jc-card jc-nopad"><div className="jc-cardhead pad"><h3>Per lid</h3><span className="jc-hint">tik een lid voor het maandoverzicht</span></div>
       <div className="jc-luslist">{perLid.map(({m,total,nogTeSparen,doelBereikt,perMaand,status})=>{const pct=target?Math.min(100,(total/target)*100):0;
         return(<div key={m.id} className="jc-lusrow" onClick={()=>setSel(m.id)} style={{cursor:"pointer"}}><span className="jc-av sm" style={{background:m.color}}>{m.short[0]}</span>
@@ -680,18 +684,33 @@ function Lustrum({data,update,edit}){
   </div>);
 }
 function LustrumSheet({data,update,mid,edit,onClose}){
-  const m=data.members.find(x=>x.id===mid);const months=data.months;
-  const setStart=(v)=>update(d=>{const n=Number(v);d.members.find(x=>x.id===mid).lustrumStart=isNaN(n)?0:n;});
+  const m=data.members.find(x=>x.id===mid);
   const setMaand=(mo,v)=>update(d=>{const k=`${mid}|${mo}`;const n=v===""?0:Number(v);d.lustrumLedger[k]=isNaN(n)?0:n;});
   const total=lustrumTotal(data,mid);
   return (<div className="jc-overlay" onClick={onClose}><div className="jc-sheet" onClick={e=>e.stopPropagation()}>
-    <div className="jc-sheethead"><span className="jc-av" style={{background:m.color}}>{m.short[0]}</span><div><div className="jc-sheetname">{m.name}</div><div className="jc-sheetsub">lustrum sparen</div></div><button className="jc-x" onClick={onClose}>✕</button></div>
+    <div className="jc-sheethead"><span className="jc-av" style={{background:m.color}}>{m.short[0]}</span><div><div className="jc-sheetname">{m.name}</div><div className="jc-sheetsub">Wat {m.short} per maand heeft gespaard</div></div><button className="jc-x" onClick={onClose}>✕</button></div>
     <div className="jc-sheetopen">Totaal gespaard: <b className="ochre">{eur(total)}</b></div>
     <div className="jc-sheetlist">
-      <div className="jc-sheetrow"><span className="jc-sheetmo">Beginsaldo (vóór maandelijkse tracking)</span><input className="jc-reqin" type="number" value={m.lustrumStart||0} disabled={!edit} onChange={e=>setStart(e.target.value)}/></div>
-      {months.map(mo=>(<div key={mo} className="jc-sheetrow"><span className="jc-sheetmo">{mLabel(mo,true)}</span><input className="jc-reqin" type="number" value={data.lustrumLedger[`${mid}|${mo}`]||0} disabled={!edit} onChange={e=>setMaand(mo,e.target.value)}/></div>))}
+      {LUSTRUM_MONTHS.map(mo=>(<div key={mo} className="jc-sheetrow"><span className="jc-sheetmo">{mLabel(mo,true)}</span><input className="jc-reqin" type="number" value={data.lustrumLedger[`${mid}|${mo}`]||0} disabled={!edit} onChange={e=>setMaand(mo,e.target.value)}/></div>))}
     </div>
   </div></div>);
+}
+// Maandtotaal: in één oogopslag zien hoeveel er in een gekozen maand door alle
+// leden samen is ingelegd, zodat de penningmeester dat bedrag in één keer naar
+// het lustrumpotje kan overmaken zonder zelf op te tellen.
+function LustrumMaandtotaal({data}){
+  const defaultMo=LUSTRUM_MONTHS.includes(NOW)?NOW:LUSTRUM_MONTHS[0];
+  const [mo,setMo]=useState(defaultMo);
+  const rows=data.members.map(m=>({m,bedrag:data.lustrumLedger[`${m.id}|${mo}`]||0})).filter(r=>r.bedrag>0);
+  const total=rows.reduce((a,r)=>a+r.bedrag,0);
+  return (<div className="jc-card"><div className="jc-cardhead"><h3>Maandtotaal — overmaken naar potje</h3>
+      <select value={mo} onChange={e=>setMo(e.target.value)}>{LUSTRUM_MONTHS.map(k=><option key={k} value={k}>{mLabel(k,true)}</option>)}</select>
+    </div>
+    <p className="jc-sub">Totaal door alle leden gespaard in {mLabel(mo,true)}</p>
+    <span className="jc-bigochre">{eur0(total)}</span>
+    {rows.length>0?<div className="jc-chiprow" style={{marginTop:10}}>{rows.map(({m,bedrag})=>(<span key={m.id} className="jc-person"><span className="jc-av" style={{background:m.color}}>{m.short[0]}</span>{m.short}<b>{eur0(bedrag)}</b></span>))}</div>
+      :<p className="jc-empty" style={{marginTop:8}}>Nog niemand heeft in {mLabel(mo,true)} lustrum ingelegd.</p>}
+  </div>);
 }
 
 // ───────────── prognose ─────────────
