@@ -343,16 +343,16 @@ function Betalingen({data,update,edit}){
   const [confirmLeeg,setConfirmLeeg]=useState(false);
   const [confirmDelMaand,setConfirmDelMaand]=useState(false);
   const counts=months.map(mo=>data.members.filter(m=>isPaid(data,m.id,mo)).length);
-  let legeCount=0;data.members.forEach(m=>months.forEach(mo=>{if(!hasEntry(data,m.id,mo))legeCount++;}));
-  const vulLegeIn=()=>{update(d=>{d.members.forEach(m=>{months.forEach(mo=>{if(!hasEntry(d,m.id,mo)){const k=`${m.id}|${mo}`;d.ledger[k]={req:m.rate,paid:false};}});});});setConfirmLeeg(false);};
-  const addMaand=()=>update(d=>{const last=[...d.months].sort().pop();const next=addMonth(last,1);if(!d.months.includes(next))d.months.push(next);d.months.sort();});
   const laatsteMaand=[...months].sort().pop();
+  let legeCount=0;data.members.forEach(m=>{if(!hasEntry(data,m.id,laatsteMaand))legeCount++;});
+  const vulLegeIn=()=>{update(d=>{const last=[...d.months].sort().pop();d.members.forEach(m=>{if(!hasEntry(d,m.id,last)){const k=`${m.id}|${last}`;d.ledger[k]={req:m.rate,paid:false};}});});setConfirmLeeg(false);};
+  const addMaand=()=>update(d=>{const last=[...d.months].sort().pop();const next=addMonth(last,1);if(!d.months.includes(next))d.months.push(next);d.months.sort();});
   const delMaand=()=>{update(d=>{const last=[...d.months].sort().pop();d.months=d.months.filter(mo=>mo!==last);Object.keys(d.ledger).forEach(k=>{if(k.endsWith(`|${last}`))delete d.ledger[k];});});setConfirmDelMaand(false);};
   return (<div className="jc-card jc-nopad">
     <div className="jc-cardhead pad"><h3>Betaaloverzicht</h3><span className="jc-hint">{edit?"tik een vakje om te bewerken · tik een naam voor overzicht":"alleen-lezen"}</span></div>
     {edit&&<div className="jc-importfoot" style={{borderTop:"none",borderBottom:"1px solid var(--line)",gap:8,flexWrap:"wrap"}}>
-      {confirmLeeg?<><span className="jc-needcat">{legeCount} lege vakje{legeCount!==1?"s":""} omzetten naar niet-betaald?</span><button className="jc-ghost" onClick={()=>setConfirmLeeg(false)}>annuleren</button><button className="jc-primary" onClick={vulLegeIn}>ja, omzetten</button></>
-        :<button className="jc-addbtn ghost" onClick={()=>setConfirmLeeg(true)} disabled={legeCount===0}>Lege vakjes → niet betaald{legeCount>0?` (${legeCount})`:""}</button>}
+      {confirmLeeg?<><span className="jc-needcat">{legeCount} lege vakje{legeCount!==1?"s":""} in {mLabel(laatsteMaand,true)} omzetten naar niet-betaald?</span><button className="jc-ghost" onClick={()=>setConfirmLeeg(false)}>annuleren</button><button className="jc-primary" onClick={vulLegeIn}>ja, omzetten</button></>
+        :<button className="jc-addbtn ghost" onClick={()=>setConfirmLeeg(true)} disabled={legeCount===0}>Lege vakjes {mLabel(laatsteMaand)} → niet betaald{legeCount>0?` (${legeCount})`:""}</button>}
       <button className="jc-addbtn ghost" onClick={addMaand}>+ maand toevoegen</button>
       {confirmDelMaand?<><span className="jc-needcat">Maand {mLabel(laatsteMaand,true)} en alle gegevens daarin verwijderen?</span><button className="jc-ghost" onClick={()=>setConfirmDelMaand(false)}>annuleren</button><button className="jc-primary" onClick={delMaand}>ja, verwijderen</button></>
         :<button className="jc-addbtn ghost" onClick={()=>setConfirmDelMaand(true)} disabled={months.length<=1}>− maand verwijderen ({mLabel(laatsteMaand,true)})</button>}
