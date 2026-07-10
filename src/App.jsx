@@ -112,7 +112,8 @@ const LUSTRUM_MONTHS=(()=>{const out=[];let k="2025-11";while(k<="2028-12"){out.
 function cellReq(data,mid,month){const e=data.ledger[`${mid}|${month}`];if(e&&e.req!=null)return e.req;const m=data.members.find(x=>x.id===mid);return m?m.rate:0;}
 function isPaid(data,mid,month){const e=data.ledger[`${mid}|${month}`];return !!(e&&e.paid);}
 function hasEntry(data,mid,month){const e=data.ledger[`${mid}|${month}`];return !!e&&(e.paid||e.req!=null);}
-function arrears(data,mid){const months=data.months;for(let i=months.length-1;i>=0;i--){const e=data.ledger[`${mid}|${months[i]}`];if(e&&(e.req!=null||e.paid)){if(e.paid)return 0;return e.req!=null?e.req:(data.members.find(m=>m.id===mid)?.rate||0);}}return 0;}
+// Achterstand = som van alle rode (niet-betaalde) vakjes over alle maanden — niet alleen de laatste maand.
+function arrears(data,mid){return data.months.reduce((a,mo)=>hasEntry(data,mid,mo)&&!isPaid(data,mid,mo)?a+cellReq(data,mid,mo):a,0);}
 function catColor(data,name){const c=(data.categories||[]).find(x=>x.name===name);return c?c.color:"#6b5436";}
 function monthIncome(data,mo){return data.income[mo]!=null?data.income[mo]:data.members.reduce((a,m)=>a+(isPaid(data,m.id,mo)?cellReq(data,m.id,mo):0),0);}
 function monthExpense(data,mo,exclSparen=false){return data.expenses.filter(e=>e.month===mo&&(!exclSparen||e.cat!=="Sparen")).reduce((a,e)=>a+e.amount,0);}
@@ -410,11 +411,11 @@ function MemberSheet({data,update,mid,edit,onClose}){
 // ───────────── achterstand ─────────────
 function Achterstand({data}){
   const months=data.months;
-  const rows=data.members.map(m=>{let last=null;for(let i=months.length-1;i>=0;i--){const e=data.ledger[`${m.id}|${months[i]}`];if(e&&(e.req!=null||e.paid)){last=months[i];break;}}return{m,open:arrears(data,m.id),last};}).sort((a,b)=>b.open-a.open);
+  const rows=data.members.map(m=>{const openCount=months.filter(mo=>hasEntry(data,m.id,mo)&&!isPaid(data,m.id,mo)).length;return{m,open:arrears(data,m.id),openCount};}).sort((a,b)=>b.open-a.open);
   const totaal=rows.reduce((a,r)=>a+r.open,0);
   return (<div className="jc-card"><div className="jc-cardhead"><h3>Achterstanden</h3><span className="jc-bigclay">{eur0(totaal)}</span></div>
-    <p className="jc-sub" style={{marginTop:-6,marginBottom:12}}>Het openstaande bedrag is het laatst gevraagde bedrag dat nog niet is voldaan (loopt cumulatief op).</p>
-    <div className="jc-achlist">{rows.map(({m,open,last})=>(<div key={m.id} className={"jc-achrow"+(open===0?" clear":"")}><span className="jc-av sm" style={{background:m.color}}>{m.short[0]}</span><div className="jc-achname">{m.name}{last&&<span className="jc-achmonths">stand per {mLabel(last,true)}</span>}</div><span className={"jc-achamt "+(open>0?"clay":"sahel")}>{open>0?eur0(open):"bij"}</span></div>))}</div></div>);
+    <p className="jc-sub" style={{marginTop:-6,marginBottom:12}}>De achterstand is de som van alle maanden die nog op niet-betaald staan.</p>
+    <div className="jc-achlist">{rows.map(({m,open,openCount})=>(<div key={m.id} className={"jc-achrow"+(open===0?" clear":"")}><span className="jc-av sm" style={{background:m.color}}>{m.short[0]}</span><div className="jc-achname">{m.name}{openCount>0&&<span className="jc-achmonths">{openCount} open maand{openCount!==1?"en":""}</span>}</div><span className={"jc-achamt "+(open>0?"clay":"sahel")}>{open>0?eur0(open):"bij"}</span></div>))}</div></div>);
 }
 
 // ───────────── uitgaves ─────────────
